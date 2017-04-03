@@ -3,6 +3,7 @@
 #' @importFrom survival Surv
 #' @importFrom stats approx coef model.frame model.matrix pchisq printCoefmat
 #' @importFrom magrittr "%>%"
+#' @importFrom Rcpp evalCpp
 #' @useDynLib frailtyEM, .registration=TRUE
 #' @include em_fit.R
 #' @include emfrail_aux.R
@@ -106,6 +107,7 @@
 #' logliks
 #' }
 #' # Draw the profile log-likelihood
+#' \dontrun{
 #' fr_var <- seq(from = 0.01, to = 1.4, length.out = 20)
 #'
 #' # For gamma the variance is 1/theta (see parametrizations)
@@ -116,7 +118,7 @@
 #'      type = "l",
 #'      xlab = "Frailty variance",
 #'      ylab = "Profile log-likelihood")
-#'
+#' }
 #' \dontrun{
 #' # The same can be done with coxph, where variance is refered to as "theta"
 #' pll_cph <- sapply(fr_var, function(fr)
