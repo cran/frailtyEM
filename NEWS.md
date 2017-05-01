@@ -1,3 +1,56 @@
+# frailtyEM 0.6.2
+- big overhaul of the `control` argument and the `emfrail_control()` function
+
+# frailtyEM 0.6.1 
+- removed some old dependencies in the documentation and DESCRIPTION
+
+# frailtyEM 0.6.0 (release)
+- overall, numerous improvements compared to the previous release. Key new features include likelihood based confidence interval for the frailty parameter, more measures of dependence calculated with `summary()`, plots using `ggplot2`, and numerous bug fixes. 
+
+# frailtyEM 0.5.13
+- now the call is printed also when the summary is printed
+
+# frailtyEM 0.5.12
+- performance improvements. Now the likelihood-based confidence intervals should take less time as they know better where to look. 
+
+# frailtyEM 0.5.11
+- moved from `optimize` + `numDeriv` to `nlm`
+
+# frailtyEM 0.5.11
+- added a number of dependence measures that can be compared across distributions such as Kendall's tau, median concordance. 
+- changed quite a lot in the structure of the summary object and the print method to make it more consistent and easier to develop in the future
+
+# frailtyEM 0.5.10
+- added score test for dependent censoring
+
+# frailtyEM 0.5.9
+- `ggplot_emfrail()`  added! Now the same plots (and more) can be done with the good looking `ggplot2` engine. 
+
+# frailtyEM 0.5.8
+- `summary.emfrail()` now has a new argument `print_opts` that is used in `print.emfrail_summary()`; if the output becomes too big, then some parts of the output may be ommitted
+
+# frailtyEM 0.5.7
+
+- The optimization now is regulated by search intervals described in the `emfrail_control()` and the `.control` argument. 
+- The parametrization of the stable distribution has been changed, just removed the $1-$ in the beginning (why did I have that there again?)
+- There are different intervals for the gamma/pvf and stable distributions. That's roughly because the stable chokes with small values of `theta`. This should be tuned somehow in the future. The problem lies in the M step where `agreg.fit` can't deal with large offset values.
+- Likelihood confidence based intervals now do the correct thing when the estimate is close to the parameter space but not quite there
+- Eliminated the fast fit for the inverse gaussian, this also seems to choke (the fast E step, can't figure out why), while the slow fit in C++ works fine...
+- A slight update in documentation. 
+
+TODO: 
+- recover lost features in this update: measures of dependence in `summary.emfrail`, first of all
+- bring back the fast fit for inverse gaussian or... who knows, maybe now
+- document `emfrail_control` properly
+- update vignette
+
+# frailtyEM 0.5.6
+Likelihood based confidence intervals are here! 
+
+# frailtyEM 0.5.5
+Removed the maximization by `optimx` and doing it with `optimize()`, since it's one dimensional. 
+A hessian estimate is obtained from `numDeriv()`.
+
 # frailtyEM 0.5.4
 Minor bug fixes 
 

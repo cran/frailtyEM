@@ -1,7 +1,7 @@
 #' Fitting shared frailty models with the EM algorithm
 #'
 #' @importFrom survival Surv
-#' @importFrom stats approx coef model.frame model.matrix pchisq printCoefmat
+#' @importFrom stats approx coef model.frame model.matrix pchisq printCoefmat nlm uniroot cor
 #' @importFrom magrittr "%>%"
 #' @importFrom Rcpp evalCpp
 #' @useDynLib frailtyEM, .registration=TRUE
@@ -9,11 +9,14 @@
 #' @include emfrail_aux.R
 #'
 #' @param .data A data frame in which the formula argument can be evaluated
-#' @param .formula A formula that contains on the left hand side an object of the type \code{Surv} in the Andersen-Gill format, and on the right hand side a \code{+cluster(id)} statement
+#' @param .formula A formula that contains on the left hand side an object of the type \code{Surv}
+#' and on the right hand side a \code{+cluster(id)} statement. Optionally, also a \code{+terminal()} statement
+#' may be added, and then a score test for association between the event process and the result in the specified
+#' column is performed. See details.
 #' @param .distribution An object as created by \code{\link{emfrail_distribution}}
 #' @param .control An object as created by \code{\link{emfrail_control}}
 #' @return An object of the class \code{emfrail}, that is in fact a list which contains (1) the object returned by the
-#' "outer maximization" from \code{optimx}, (2) the object with all the estimates returned by the "inner maximization",
+#' "outer maximization", (2) the object with all the estimates returned by the "inner maximization",
 #' (3) the log-likelihood of the Cox model without frailty, (4) the variance-covariance matrix adjusted for the uncertainty in the
 #' outer maximization, (5) the results of the Commenges-Andersen test for heterogeneity and (6,7,8) are copies of the original input arguments: .formula, .distribution and .control.
 #' Two attributes are also present, \code{class} for determining the object type and \code{metadata} which contains some information that is used to
@@ -42,22 +45,28 @@
 #' The "inner" problem is solved relying on \code{agreg.fit} from the \code{survival} package in the M step
 #' and with an E step which is done in \code{R} when there are closed form solutions and in \code{C++} when the
 #' solutions are calculated with a recursive algorithm. The information matrix (given fixed \eqn{\theta}) is calculated using Louis' formula.
-#' The "outer" problem is solved relying on the maximizers in the \code{optimx} package, which also provides an estimate
+#' The "outer" problem is solved relying on the maximizers in the \code{nlm} function, which also provides an estimate
 #' of the Hessian matrix. The remaining elements of the information matrix are approximated numerically.
 #'
 #' Several options are available to the user. In the \code{.distribution} argument, the frailty distribution and the
 #' starting value for \eqn{\theta} can be specified, as well as whether the data consists of left truncated
 #' survival times or not (the default). In the \code{.control} argument, several parameters control the maximization.
 #' The convergence criterion for the EM can be specified (or a maximum number of iterations). The "outer" procedure can be
-#' avoided altogether and then \code{emfrail} calculates only \eqn{\widehat{L}(\theta)} at the given starting value. Also,
-#' some parameters for \code{optimx} can be set.
+#' avoided altogether and then \code{emfrail} calculates only \eqn{\widehat{L}(\theta)} at the given starting value.
+#'
+#' The Commenges-Andersen test is a score test for heterogeneity which test the null hypothesis that all
+#' frailties are equal to 1. This only uses the information from the initial proportional hazards model
+#' without frailty.
+#'
+#' The score test for dependent censoring test is detailed in Balan et al (2016). If significant, it may indicate
+#' that dependent censoring is present. A common scenario is when recurrent events are stopped by a terminal event.
 #'
 #' @note Some possible problems may appear when the maximum likelihood estimate lies on the border of the parameter space.
 #' Usually, this will happen when the "outer" parameter MLE is infinity (i.e. variance 0 in case of gamma and PVF).
 #' For small enough values of \eqn{1/\theta} the log-likelihood
 #' of the Cox model is returned to avoid such problems. This option can be tweaked in \code{emfrail_control()}.
 #'
-#' @seealso \code{\link{plot_emfrail}} for plot functions directly available, \code{\link{emfrail_pll}} for calculating \eqn{\widehat{L}(\theta)} at specific values of \eqn{\theta},
+#' @seealso \code{\link{plot_emfrail}} and \code{\link{ggplot_emfrail}} for plot functions directly available, \code{\link{emfrail_pll}} for calculating \eqn{\widehat{L}(\theta)} at specific values of \eqn{\theta},
 #' \code{\link{summary.emfrail}} for transforming the \code{emfrail} object into a more human-readable format and for
 #' visualizing the frailty (empirical Bayes) estimates,
 #' \code{\link{predict.emfrail}} for calculating and visalizing conditional and marginal survival and cumulative
@@ -269,20 +278,16 @@ emfrail <- function(.data,
   if(!inherits(.control, "emfrail_control"))
     stop(".control argument misspecified; see ?emfrail_control()")
 
-  if(isTRUE(.control$fast_fit)) {
+  if(isTRUE(.control$inner_control$fast_fit)) {
     if(!(.distribution$dist %in% c("gamma", "pvf"))) {
       #message("fast_fit option only available for gamma and pvf with m=-1/2 distributions")
-      .control$fast_fit <- FALSE
-    }
-    if(.distribution$dist == "pvf" & (.distribution$pvfm != -1/2)) {
-      #message("fast_fit option only available for gamma and pvf with m=-1/2 distributions")
-      .control$fast_fit <- FALSE
+      .control$inner_control$fast_fit <- FALSE
     }
 
-    if(.distribution$dist == "pvf" & (.distribution$pvfm == -1/2) & .distribution$left_truncation ) {
-      #message("fast_fit option not available with left truncation for the Inverse Gaussian")
-      .control$fast_fit <- FALSE
-    }
+    # version 0.5.6, the IG fast fit gets super sensitive at small frailty variance...
+    if(.distribution$dist == "pvf")
+      .control$inner_control$fast_fit <- FALSE
+
   }
 
 
@@ -290,20 +295,20 @@ emfrail <- function(.data,
 
 
   if(missing(.formula)  | missing(.data)) stop("Missing arguments")
-  # if(missing(.distribution)) {
-  #   .distribution <-  emfrail_distribution()
-  #   print("default distribution")
-  # }
-  # if(missing(.control)) .control <- emfrail_control()
 
   cluster <- function(x) x
+  terminal <- function(x) x
+
   mf <- model.frame(.formula, .data)
+
 
   # Identify the cluster and the ID column
   pos_cluster <- grep("cluster", names(mf))
   if(length(pos_cluster) != 1) stop("misspecified or non-specified cluster")
   id <- mf[[pos_cluster]]
 
+  pos_terminal <- grep("terminal", names(mf))
+  if(length(pos_terminal) > 1) stop("misspecified terminal()")
 
   Y <- mf[[1]]
   if(!inherits(Y, "Surv")) stop("left hand side not a survival object")
@@ -321,9 +326,9 @@ emfrail <- function(.data,
   X1 <- model.matrix(.formula, .data)
   # this is necessary because when factors have more levels, pos_cluster doesn't correspond any more
   pos_cluster_X1 <- grep("cluster", colnames(X1))
-  X <- X1[,-c(1, pos_cluster_X1), drop=FALSE]
+  pos_terminal_X1 <- grep("terminal", colnames(X1))
+  X <- X1[,-c(1, pos_cluster_X1, pos_terminal_X1), drop=FALSE]
   # note: X has no attributes, in coxph it does.
-
 
   # some stuff for creating the C vector, is used all along.
   # mcox also works with empty matrices, but also with NULL as x.
@@ -351,34 +356,7 @@ emfrail <- function(.data,
 
   explp <- exp(mcox$linear.predictors) # these are with centered covariates
 
-  # hh <- getchz(Y = Y, newrisk = newrisk, explp = explp)
-
-
-
-
-  # cumhaz_line <- sapply(X = apply(as.matrix(Y[,c(1,2)]), 1, as.list),
-  #                       FUN = function(x)  sum(hh$haz_tev[x$start <= hh$tev & hh$tev <= x$stop])) *
-  #   exp_g_x # this is supposed to be without centered covariates.
-  # #
-  # #
-
-  # #
-  # basehaz_line <- hh$haz_tev[match(Y[,2], hh$tev)]
-
-  # Cvec <- tapply(X = cumhaz_line,
-  #                INDEX = id,
-  #                FUN = sum)
-
-  # the shorter way
-
-  # new way of doing the things;
-
   nev_id <- rowsum(Y[,3], id) # nevent per id or am I going crazy
-
-   # Cvec <- nev_id - as.vector(rowsum(mcox$residuals, id)) #WONG?
-
-  #cumhaz_line_a <- (Y[,3] - mcox$residuals) # with covariates!
-
 
 
   # for the baseline hazard how the fuck is that gonna happen?
@@ -413,14 +391,6 @@ emfrail <- function(.data,
 
   nrisk <- nrisk - c(esum, 0,0)[indx]
 
-  # esum %>% length
-  # indx %>% length
-  #
-  # esum
-  # indx
-  # # last indx is 548
-  # esum
-
   haz <- nevent/nrisk * newrisk
 
 
@@ -438,22 +408,7 @@ emfrail <- function(.data,
 
   if(isTRUE(.control$ca_test)) ca_test <- ca_test_fit(mcox, X, atrisk, exp_g_x, cumhaz)
   if(isTRUE(.control$only_ca_test)) return(ca_test)
-  # cumulative hazard?
 
-
-  # getChz style
-
-  # hh <- getchz(Y, newrisk, explp)
-  # cumhaz_line_2 <- sapply(X = apply(as.matrix(Y[,c(1,2)]), 1, as.list),
-  #                       FUN = function(x)  sum(hh$haz_tev[x$start <= hh$tev & hh$tev <= x$stop])) *
-  #   exp_g_x
-  #
-  # which(as.numeric(cumhaz_line_2)[1] != cumhaz_line[1])
-  # abline(0,1,col=2)
-
-  #all.equal(hh$haz, haz)
-
-  #Cvec_from0 - Cvec
 
   if(isTRUE(.distribution$left_truncation)) {
     #indx2 <- findInterval(Y[,1], time, left.open = TRUE)
@@ -474,41 +429,150 @@ emfrail <- function(.data,
            Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
            mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
            Cvec = Cvec, lt = .distribution$left_truncation,
-           Cvec_lt = Cvec_lt,
-          .control = .control))
+           Cvec_lt = Cvec_lt, se = FALSE,
+           inner_control = .control$inner_control))
   }
 
 
-  # otherwise, the maximizer
-  outer_m <- optimx::optimx(par = log(.distribution$theta), fn = em_fit,
-               hessian = TRUE,
-               #lower = -10000, upper = 10000,
-               method = .control$opt_control$method, #control = .control$opt_control$control,
-               #control = list(trace = 10, save.failures = TRUE),
-               dist = .distribution$dist, pvfm = .distribution$pvfm,
-               Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
-               mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
-               Cvec = Cvec, lt = .distribution$left_truncation,
-               Cvec_lt = Cvec_lt,
-               .control = .control)
+
+  # With the stable distribution, a problem pops up for small values, i.e. very large association (tau large)
+  # So there is another interval...
+  if(.distribution$dist == "stable") {
+    .control$lik_ci_intervals$interval <- .control$lik_ci_intervals$interval_stable
+  }
+
+  # add a bit to the interval so that it gets to the Cox likelihood, if it is at that end of the parameter space
+
+  # Maybe try nlm as well. Looks alright!
+
+  # outer_m <- optimize(f = em_fit,
+  #                     interval = .control$opt_control$interval + c(0, 0.1),
+  #                     dist = .distribution$dist, pvfm = .distribution$pvfm,
+  #          Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+  #          mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
+  #          Cvec = Cvec, lt = .distribution$left_truncation,
+  #          Cvec_lt = Cvec_lt,
+  #          .control = .control)
+
+  # Hessian
+  # hess <- numDeriv::hessian(func = em_fit,
+  #         x = outer_m$minimum,
+  #         dist = .distribution$dist, pvfm = .distribution$pvfm,
+  #         Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+  #         mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
+  #         Cvec = Cvec, lt = .distribution$left_truncation,
+  #         Cvec_lt = Cvec_lt,
+  #         .control = .control)
+
+  outer_m <- nlm(f = em_fit,
+                 p = 2, hessian = TRUE,
+                 dist = .distribution$dist, pvfm = .distribution$pvfm,
+                 Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+                 mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
+                 Cvec = Cvec, lt = .distribution$left_truncation,
+                 Cvec_lt = Cvec_lt, se = FALSE,
+                 inner_control = .control$inner_control)
+
+  # do.call(nlm, c(list(f = em_fit, p = 2, hessian = TRUE, dist = .distribution$dist, pvfm = .distribution$pvfm,
+  #                Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+  #                mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
+  #                Cvec = Cvec, lt = .distribution$left_truncation,
+  #                Cvec_lt = Cvec_lt,
+  #                .control = .control), .control$opt_control))
+
+    # likelihood-based confidence intervals
+  theta_low <- theta_high <- NULL
+  if(isTRUE(.control$lik_ci)) {
+
+  lower_llik <- em_fit(.control$lik_ci_intervals$interval[1],
+                       dist = .distribution$dist,
+                       pvfm = .distribution$pvfm,
+                       Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+                       mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
+                       Cvec = Cvec, lt = .distribution$left_truncation,
+                       Cvec_lt = Cvec_lt, se = FALSE,
+                       inner_control = .control$inner_control)
+
+  upper_llik <- em_fit(.control$lik_ci_intervals$interval[2],
+         dist = .distribution$dist,
+         pvfm = .distribution$pvfm,
+         Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+         mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
+         Cvec = Cvec, lt = .distribution$left_truncation,
+         Cvec_lt = Cvec_lt, se = FALSE,
+         inner_control = .control$inner_control)
+
+  theta_low <- uniroot(function(x, ...) outer_m$minimum - em_fit(x, ...) + 1.92,
+                       interval = c(.control$lik_ci_intervals$interval[1], outer_m$estimate),
+                       f.lower = outer_m$minimum - lower_llik + 1.92, f.upper = 1.92,
+                       tol = .Machine$double.eps^0.1,
+                       dist = .distribution$dist,
+                       pvfm = .distribution$pvfm,
+                       Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+                       mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
+                       Cvec = Cvec, lt = .distribution$left_truncation,
+                       Cvec_lt = Cvec_lt, se = FALSE,
+                       inner_control = .control$inner_control,
+                       maxiter = 100)$root
+
+
+  # this says that if I can't get a significant difference on the right side
+  # then screw this it's infinity
+  if(upper_llik  - outer_m$minimum < 1.92) theta_high <- Inf else
+    theta_high <- uniroot(function(x, ...) outer_m$minimum - em_fit(x, ...) + 1.92,
+                          interval = c(outer_m$estimate, .control$lik_ci_intervals$interval[2]),
+                          f.lower = 1.92, f.upper = outer_m$minimum - upper_llik + 1.92,
+                          extendInt = c("downX"),
+                          dist = .distribution$dist,
+                          pvfm = .distribution$pvfm,
+                          Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+                          mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
+                          Cvec = Cvec, lt = .distribution$left_truncation,
+                          Cvec_lt = Cvec_lt, se  = FALSE,
+                          inner_control = .control$inner_control)$root
+  }
+
+  # outer_m$minimum
+  # em_fit(0.45,
+  #        dist = .distribution$dist,
+  #        pvfm = .distribution$pvfm,
+  #        Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+  #        mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
+  #        Cvec = Cvec, lt = .distribution$left_truncation,
+  #        Cvec_lt = Cvec_lt,
+  #        .control = .control)
 
   #message("Calculating final fit with information matrix...")
 
-  inner_m <- em_fit(logfrailtypar = outer_m$p1,
+  if(isTRUE(.control$se))  {
+    inner_m <- em_fit(logfrailtypar = outer_m$estimate,
                       dist = .distribution$dist, pvfm = .distribution$pvfm,
                       Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
                       mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
                       Cvec = Cvec, lt = .distribution$left_truncation,
-                      Cvec_lt = Cvec_lt,
-                      .control = .control, return_loglik = FALSE)
+                      Cvec_lt = Cvec_lt, se = TRUE,
+                      inner_control = .control$inner_control,
+                      return_loglik = FALSE)
+  } else
+    inner_m <- em_fit(logfrailtypar = outer_m$estimate,
+                      dist = .distribution$dist, pvfm = .distribution$pvfm,
+                      Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+                      mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
+                      Cvec = Cvec, lt = .distribution$left_truncation,
+                      Cvec_lt = Cvec_lt, se = FALSE,
+                      inner_control = .control$inner_control,
+                      return_loglik = FALSE)
 
-  if(isTRUE(.control$se_fit) & isTRUE(.control$se_adj)) {
+
+  # adjusted standard errors
+  if(isTRUE(.control$se) & isTRUE(.control$se_adj)) {
 
     # absolute value should be redundant. but sometimes the "hessian" might be 0.
     # in that case it might appear negative; this happened only on Linux...
-    h <- as.numeric(sqrt(abs(1/(attr(outer_m, "details")[[3]])))/2)
-    lfp_minus <- max(outer_m$p1 - h , outer_m$p1 - 5)
-    lfp_plus <- min(outer_m$p1 + h , outer_m$p1 + 5)
+    # h <- as.numeric(sqrt(abs(1/(attr(outer_m, "details")[[3]])))/2)
+    h<- as.numeric(sqrt(abs(1/outer_m$hessian))/2)
+    lfp_minus <- max(outer_m$estimate - h , outer_m$estimate - 5)
+    lfp_plus <- min(outer_m$estimate + h , outer_m$estimate + 5)
 
     message("Calculating adjustment for information matrix...")
 
@@ -518,16 +582,17 @@ emfrail <- function(.data,
                               Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
                               mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
                               Cvec = Cvec, lt = .distribution$left_truncation,
-                              Cvec_lt = Cvec_lt,
-                              .control = .control, return_loglik = FALSE)
+                              Cvec_lt = Cvec_lt, se = TRUE,
+                              inner_control = .control$inner_control,
+                              return_loglik = FALSE)
 
     final_fit_plus <- em_fit(logfrailtypar = lfp_plus,
                              dist = .distribution$dist, pvfm = .distribution$pvfm,
                              Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
                              mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
                              Cvec = Cvec, lt = .distribution$left_truncation,
-                             Cvec_lt = Cvec_lt,
-                             .control = .control, return_loglik = FALSE)
+                             Cvec_lt = Cvec_lt, se = TRUE,
+                             inner_control = .control$inner_control, return_loglik = FALSE)
 
 
     # instructional: this should be more or less equal to the
@@ -540,65 +605,64 @@ emfrail <- function(.data,
 
     #adj_se <- sqrt(diag(deta_dtheta %*% (1/(attr(opt_object, "details")[[3]])) %*% t(deta_dtheta)))
 
-    vcov_adj = inner_m$Vcov + deta_dtheta %*% (1/(attr(outer_m, "details")[[3]])) %*% t(deta_dtheta)
+    # vcov_adj = inner_m$Vcov + deta_dtheta %*% (1/(attr(outer_m, "details")[[3]])) %*% t(deta_dtheta)
+    vcov_adj = inner_m$Vcov + deta_dtheta %*% (1/outer_m$hessian) %*% t(deta_dtheta)
 
   } else vcov_adj = matrix(NA, nrow(inner_m$Vcov), nrow(inner_m$Vcov))
-  # that the hessian
 
 
-  res <- list(outer_m = outer_m,
+
+  if(length(pos_terminal_X1) > 0 & .distribution$dist == "gamma") {
+    Y[,3] <- X1[,pos_terminal_X1]
+
+    Mres <- survival::agreg.fit(x = X, y = Y, strata = NULL, offset = NULL, init = NULL,
+                        control = survival::coxph.control(),
+                        weights = NULL, method = "breslow", rownames = NULL)$residuals
+    Mres_id <- rowsum(Mres, atrisk$order_id)
+
+    theta <- exp(outer_m$minimum)
+
+    fr <- with(inner_m, estep[,1] / estep[,2])
+
+    numerator <- theta + inner_m$nev_id
+    denominator <- numerator / fr
+
+    lfr <- digamma(numerator) - log(denominator)
+
+    lfr2 <- (digamma(numerator))^2 + trigamma(numerator) - (log(denominator))^2 - 2 * log(denominator) * lfr
+
+    # score test 1 I think
+    r <- cor(lfr, Mres_id)
+    tr <- r* sqrt((length(fr) - 2) / (1 - r^2))
+    p.cor <- pchisq(tr^2, df = 1, lower.tail = F)
+
+    cens_test = c(tstat = tr, pval = p.cor)
+  } else cens_test = NULL
+
+  res <- list(outer_m = list(objective = outer_m$minimum,
+                             minimum = outer_m$estimate,
+                             hess = outer_m$hessian,
+                             ltheta_low = theta_low,
+                             ltheta_high = theta_high),
               inner_m = inner_m,
               loglik_null = mcox$loglik[length(mcox$loglik)],
               # mcox = mcox,
               vcov_adj = vcov_adj,
               ca_test = ca_test,
+              cens_test = cens_test,
               .formula = .formula,
               .distribution = .distribution,
               .control = .control
               )
 
-# res <- list(outer_m = opt_object, # contains the maximization
-#             inner_m = final_fit, # the inner object
-#             mcox = mcox, # initial cox model
-#             id = unique(id),
-#             .distribution = .distribution, # the initial distribution call
-#
-#             #est_dis = est_dist,
-#               res = list(loglik = final_fit$loglik, # obsolete ?
-#                          dist = final_fit$dist, # in est_dist
-#                          pvfm = final_fit$pvfm, # in est_dist
-#                          theta = final_fit$frailtypar, # in est_dist
-#
-#                          # this should be here (the baseline at least).
-#                          haz = data.frame(time = final_fit$haz$tev,
-#                                           cumhaz = cumsum(final_fit$haz$haz_tev)),
-#                                           #se = final_fit$se[(1 + length(final_fit$coef)):length(final_fit$se)]),
-#
-#                          # this should be here as well.
-#                          z = data.frame(id = unique(id),
-#                                         nev = atrisk$nev_id,
-#                                         Lambda = final_fit$Cvec,
-#                                         z = final_fit$estep[,1] / final_fit$estep[,2] ),
-#                          # this SHOULD be here, really.
-#                                         coef = final_fit$coef,
-#
-#                          # these things happen later anyway. Maybe that should be part of a summary object.
-#                          se_coef = sqrt(diag(final_fit$Vcov)[seq_along(final_fit$coef)]),
-#                          se_coef_adj = sqrt(diag(vcov_adj)[seq_along(final_fit$coef)] )),
-#
-#             # the initial Cox model is only good to have for the loglikelihood
-#             mcox = mcox,
-#             vcov = final_fit$Vcov,
-#             vcov_adj = vcov_adj
-#                )
 
-  # these are things that make the predict work
+  # these are things that make the predict work and other methods
   terms_2 <- delete.response(attr(mf, "terms"))
   pos_cluster_2 <- grep("cluster", attr(terms_2, "term.labels"))
   terms <- drop.terms(terms_2, pos_cluster_2)
   myxlev <- .getXlevels(terms, mf)
   attr(res, "metadata") <- list(terms, myxlev)
-
+  attr(res, "call") <-  Call
   attr(res, "class") <- "emfrail"
 
 

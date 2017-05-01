@@ -4,21 +4,20 @@
 ###################################################
 ### code chunk number 1: test1
 ###################################################
-library(frailtyEM)
+library("frailtyEM")
 
 
 ###################################################
 ### code chunk number 2: bladder1
 ###################################################
-bladder2$rx <- as.factor(bladder2$rx)
+data("cgd")
 
 
 ###################################################
 ### code chunk number 3: bladder2
 ###################################################
-m1 <- emfrail(.data = bladder2,
-              .formula = Surv(start, stop, event) ~ rx + number + size + cluster(id))
-m1
+m1 <- emfrail(.data = cgd,
+              .formula = Surv(tstart, tstop, status) ~ sex + treat + cluster(id))
 
 
 ###################################################
@@ -28,29 +27,23 @@ str(emfrail_distribution())
 
 
 ###################################################
-### code chunk number 5: distribution
+### code chunk number 5: summary
 ###################################################
-m1
-
-
-###################################################
-### code chunk number 6: summary
-###################################################
-sm1 <- summary(m1)
+sm1 <- summary(m1, lik_ci = TRUE)
 sm1
 
 
 ###################################################
-### code chunk number 7: bladder2_asd
+### code chunk number 6: bladder2_asd
 ###################################################
-m_cph <- coxph(Surv(start, stop, event) ~ rx + number + size + frailty(id),
-            data = bladder2,
+m_cph <- coxph(Surv(tstart, tstop, status) ~ sex + treat + frailty(id),
+            data = cgd,
             ties = "breslow")
 m_cph
 
 
 ###################################################
-### code chunk number 8: bladder2_frailtyestimates
+### code chunk number 7: bladder2_frailtyestimates
 ###################################################
 plot(exp(m_cph$frail),
      sm1$frail$z,
@@ -60,52 +53,53 @@ abline(0,1)
 
 
 ###################################################
-### code chunk number 9: bladder2_cumhaz
+### code chunk number 8: bladder2_cumhaz
 ###################################################
-par(mfrow=c(1,2))
-plot_pred(m1,
-          newdata = data.frame(rx = "2", number = 3, size = 3),
-          ylim = c(0,4),
-          main = "treatment")
-plot_pred(m1,
-          newdata = data.frame(rx = "1", number = 3, size = 3),
-          ylim = c(0,4),
-          main = "placebo")
+library("ggplot2")
+p1 <- ggplot_pred(m1,
+          newdata = data.frame(sex = "male", treat = "rIFN-g")) +
+  ggtitle("rIFN-g") + ylim(c(0, 2)) +
+  theme_minimal()
+p2 <- ggplot_pred(m1,
+          newdata = data.frame(sex = "male", treat = "placebo")) +
+    ggtitle("placebo") + ylim(c(0, 2)) +
+    theme_minimal()
+
+gridExtra::grid.arrange(p1, p2, nrow = 1)
 
 
 ###################################################
-### code chunk number 10: bladder2_stable
+### code chunk number 9: bladder2_stable
 ###################################################
-
-m2 <- emfrail(.data = bladder2,
-              .formula = Surv(start, stop, event) ~ rx + number + size + cluster(id),
+m2 <- emfrail(.data = cgd,
+              .formula = Surv(tstart, tstop, status) ~ treat + sex + cluster(id),
               .distribution = emfrail_distribution(dist = "stable"))
 summary(m2)
 
 
 ###################################################
-### code chunk number 11: bladder2_hazardratios
+### code chunk number 10: bladder2_hazardratios
 ###################################################
-par(mfrow=c(1,2))
-plot_hr(m1,
-        newdata = data.frame(rx = c("1", "2"), number = 3, size = 3),
-        main = "gamma")
+pl1 <- ggplot_hr(m1,
+        newdata = data.frame(treat = c("placebo", "rIFN-g"),
+                             sex = c("male", "male"))) +
+  ggtitle("gamma") +
+  theme_minimal()
 
-plot_hr(m2,
-        newdata = data.frame(rx = c("1", "2"), number = 3, size = 3),
-        main = "stable")
+pl2 <- ggplot_hr(m2,
+        newdata = data.frame(treat = c("placebo", "rIFN-g"),
+                             sex = c("male", "male"))) +
+  ggtitle("stable") +
+  theme_minimal()
 
+gridExtra::grid.arrange(pl1, pl2, nrow = 1)
 
 
 ###################################################
-### code chunk number 12: kidney1
+### code chunk number 11: kidney1
 ###################################################
 data(kidney)
 kidney$sex <- ifelse(kidney$sex == 1, "male", "female")
-
-m_gam_d <- emfrail(.data = kidney,
-                 .formula = Surv(time, status) ~ age + sex + disease + cluster(id))
-summary(m_gam_d)
 
 m_gam <- emfrail(.data = kidney,
                  .formula = Surv(time, status) ~ age + sex + cluster(id))
@@ -113,7 +107,7 @@ summary(m_gam)
 
 
 ###################################################
-### code chunk number 13: kidney1
+### code chunk number 12: kidney1
 ###################################################
 m_stab <- emfrail(.data = kidney,
                  .formula = Surv(time, status) ~ age + sex + cluster(id),
@@ -122,14 +116,14 @@ summary(m_stab)
 
 
 ###################################################
-### code chunk number 14: kidney3
+### code chunk number 13: kidney3
 ###################################################
 zph1 <- cox.zph(coxph(Surv(time, status) ~ age + sex + cluster(id), data = kidney))
 zph1
 
 
 ###################################################
-### code chunk number 15: kidney4
+### code chunk number 14: kidney4
 ###################################################
 s_gam <- summary(m_gam)
 off_z <- log(s_gam$frail$z)[match(kidney$id, s_gam$frail$id)]
