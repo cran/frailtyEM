@@ -1,3 +1,41 @@
+# frailtyEM 0.7.0
+- big update comprising all previous changes: many new methods, organized plot methdos, speed improvements.
+- updated documentation
+- minor bug fixes
+
+# frailtyEM 0.6.8
+- now it's `emfrail_dist()` rather than `emfrail_distribution()`
+- a bunch of small fixes and improvements
+
+# frailtyEM 0.6.8
+- added a larger number of methods for `emfrail` objects.
+
+# frailtyEM 0.6.7
+- the `predict.emfrail` method suffered some alterations: first of all, it now gives predictions for each
+`lp` or each row of `newdata`, and it also gained the argumnet `individual`. If true, then the `newdata` argument
+is taken as coming from the same individual. This can be used with time-dependent covariates and adjusting
+the time at risk.
+
+# frailtyEM 0.6.7
+- the `emfrail` object type has been re-vamped into a more conventional object
+- cleaned up the code of the methods 
+
+# frailtyEM 0.6.6
+- now no more arguments starting with dots and a more conventional `emfrail(formula, data, stuff)` phrasing of the main fitting function.
+- added more checks of the input and warnings that try to tell the user whether the old `.formula` or `.data` arguments are still used.
+
+# frailtyEM 0.6.5
+- removed all the plot functions and replaced them by methods with `plot.emfrail()` and `autoplot.emfrail()` (for `ggplot2`).
+
+# frailtyEM 0.6.4
+- massive performance improvement, when there are a lot of distinct event time points. moved part of the calculation of the information matrix to c++
+
+# frailtyEM 0.6.3
+- fixed intervals for calculating confidence based intervals. seems there is a problem when the frailty variance is very large (e.g. 30, 40) 
+- fixed an issue where nlm was not taking the parameters from the .control argument
+- set the step size smaller for the nlm maximizer so that it doesn't overshoot (see 1st issue)
+
+
 # frailtyEM 0.6.2
 - big overhaul of the `control` argument and the `emfrail_control()` function
 

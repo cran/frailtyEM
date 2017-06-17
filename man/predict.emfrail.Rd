@@ -4,16 +4,16 @@
 \alias{predict.emfrail}
 \title{Predicted hazard and survival curves from an \code{emfrail} object}
 \usage{
-\method{predict}{emfrail}(object, lp = c(0), newdata = NULL,
+\method{predict}{emfrail}(object, newdata = NULL, lp = NULL,
   quantity = c("cumhaz", "survival"), type = c("conditional", "marginal"),
-  conf_int = c("regular", "adjusted"), ...)
+  conf_int = c("regular", "adjusted"), individual = FALSE, ...)
 }
 \arguments{
 \item{object}{An \code{emfrail} fit object}
 
-\item{lp}{A vector of linear predictor values at which to calculate the curves. Default is 0 (baseline).}
-
 \item{newdata}{A data frame with the same variable names as those that appear in the \code{emfrail} formula, used to calculate the \code{lp} (optional).}
+
+\item{lp}{A vector of linear predictor values at which to calculate the curves. Default is 0 (baseline).}
 
 \item{quantity}{Can be \code{"cumhaz"} and/or \code{"survival"}. The quantity to be calculated for the values of \code{lp}.}
 
@@ -21,26 +21,40 @@
 
 \item{conf_int}{Can be \code{"regular"} and/or \code{"adjusted"}. The type of confidence interval to be calculated.}
 
+\item{individual}{Logical. Are the observations in \code{newdata} from the same individual? See details.}
+
 \item{...}{Ignored}
 }
 \value{
-A data frame with the column \code{time} and several other columns according to the input.
-By default, for each \code{lp} it will give the following columns: \code{cumhaz}, \code{survival},
-\code{cumhaz_m}, \code{survival_m} for the cumulative hazard and survival, conditional and marginal.
+The return value is a single data frame (if \code{lp} has length 1,
+\code{newdata} has 1 row or \code{individual == TRUE}) or a list of data frames corresponding to each value of
+\code{lp} or each row of \code{newdata} otherwise.
+The names of the columns in the returned data frames are as follows: \code{time} represents the unique event time points
+from the data set, \code{lp} is the value of the linear predictor (as specified in the input or as calculated from the lines of \code{newdata}).
+By default, for each \code{lp} a data frame will contain the following columns: \code{cumhaz}, \code{survival},
+\code{cumhaz_m}, \code{survival_m} for the cumulative hazard and survival, conditional and marginal, with corresponding confidence
+bands. The naming of the columns is explained more in the Details section.
 }
 \description{
 Predicted hazard and survival curves from an \code{emfrail} object
 }
 \details{
-There are two ways of specifying for which individuals to calculate the cumulative hazard or survival curve.
-One way is directly, for certain values of the linear predictor, via \code{lp},
-and the second way is via \code{newdata}, a \code{data.frame} where the column names are the same as in the original data.
-If \code{newdata} is specified, then the \code{lp} argument is ignored.
+The function calculates predicted cumulative hazard and survival curves for given covariate
+or linear predictor values; for the first, \code{newdata} must be specified and for the latter
+\code{lp} must be specified. Each row of \code{newdata} or element of \code{lp} is consiered to be
+a different subject, and the desired predictions are produced for each of them separately.
 
-The names of the columns in the returned object are as follows: \code{time} represents the unique event time points
-from the data set, \code{lp} is the value of the linear predictor (as specified in the input or as calculated from the lines of \code{newdata}). If
-\code{newdata} is specified, columns repeating each line of \code{newdata} are also added.
- The two "quantities" that can be returned are
+In \code{newdata} two columns may be specified with the names \code{tstart} and \code{tstop}.
+In this case, each subject is assumed to be at risk only during the times specified by these two values.
+If the two are not specified, the predicted curves are produced for a subject that is at risk for the
+whole follow-up time.
+
+A slightly different behaviour is observed if \code{individual == TRUE}. In this case, all the rows of
+\code{newdata} are assumed to come from the same individual, and \code{tstart} and \code{tstop} must
+be specified, and must not overlap. This may be used for describing subjects that
+are not at risk during certain periods or subjects with time-dependent covariate values.
+
+The two "quantities" that can be returned are
 named \code{cumhaz} and \code{survival}. If we denote each quantity with \code{q}, then the columns with the marginal estimates
 are named \code{q_m}. The confidence intervals contain the name of the quantity (conditional or marginal) followed by \code{_l} or \code{_r} for
 the lower and upper bound. The bounds calculated with the adjusted standard errors have the name of the regular bounds followed by
@@ -62,71 +76,42 @@ The marginal hazard is obtained as \deqn{\bar \Lambda(t) = - \log \bar S(t).}
 The only standard errors that are available from \code{emfrail} are those for \eqn{\lambda_0(t)}. From this,
 standard errors of \eqn{\log \Lambda(t)} may be calculated. On this scale, the symmetric confidence intervals are built, and then
 moved to the desired scale.
-The following two issues arise: (1) the linear predictor is taken as fixed,
-i.e. the variability in the estimation of the regression coefficient is not taken into account and (2) this construction of the confidence intervals
-is a bit dodgy, in the sense that this is not what happens in the survival package. Several options will be added in future versions.
+}
+\note{
+The linear predictor is taken as fixed, so the variability in the estimation of the regression coefficient is not taken into account.
+Does not support left truncation (at the moment). That is because, if \code{individual == TRUE} and \code{tstart} and \code{tstop} are
+specified, for the marginal estimates the distribution of the frailty is used to calculate the integral, and not
+the distribution of the frailty given the truncation.
 }
 \examples{
 kidney$sex <- ifelse(kidney$sex == 1, "male", "female")
-m1 <- emfrail(.data =  kidney,
-              .formula = Surv(time, status) ~  sex + age  + cluster(id))
+m1 <- emfrail(formula = Surv(time, status) ~  sex + age  + cluster(id),
+              data =  kidney)
 
-pred <- predict(m1)
+# get all the possible prediction for the value 0 of the linear predictor
+predict(m1, lp = 0)
 
-names(pred)
+# get the cumulative hazards for two different values of the linear predictor
+predict(m1, lp = c(0, 1), quantity = "cumhaz", conf_int = NULL)
 
-# Plot baseline cumulative hazard: note that is for someone aged 0!
-plot_pred(m1)
+# get the cumulative hazards for a female and for a male, both aged 30
+newdata1 <- data.frame(sex = c("female", "male"),
+                       age = c(30, 30))
 
-# More realistic:
-plot_pred(m1, newdata = data.frame(sex = "female", age = mean(kidney$age)))
+predict(m1, newdata = newdata1, quantity = "cumhaz", conf_int = NULL)
 
-# Plot survival
-plot_pred(m1,
-          newdata = data.frame(sex = "female", age = mean(kidney$age)),
-          quantity = "survival", conf_int = "none")
-\dontrun{
-# Plot cumulative hazard with confidence intervals, ggplot2
-library(ggplot2)
-ggplot(pred, aes(x = time, y = cumhaz)) +
-  geom_step() +
-  geom_ribbon(aes(ymin = cumhaz_l, ymax = cumhaz_r), alpha = 0.2) +
-  geom_ribbon(aes(ymin = cumhaz_l_a, ymax = cumhaz_r_a), alpha = 0.2) +
-  ggtitle("Baseline cumulative hazard with confidence intervals")
+# get the cumulative hazards for an individual that changes
+# sex from female to male at time 40.
+newdata2 <- data.frame(sex = c("female", "male"),
+                      age = c(30, 30),
+                      tstart = c(0, 40),
+                      tstop = c(40, Inf))
 
-# For two individuals: with sex 1 and sex 0
-pred2 <- predict(m1, newdata = data.frame(sex = c("female", "male"), age = c(44, 44)))
-# Plot the conditional & survival of two individuals
-ggplot(pred2, aes(x = time, y = survival, group = sex)) +
-  geom_step(aes(colour = sex)) + ggtitle("Conditional survival")
+predict(m1, newdata = newdata2,
+        individual = TRUE,
+        quantity = "cumhaz", conf_int = NULL)
 
-ggplot(pred2, aes(x = time, y = survival_m, group = sex)) +
-  geom_step(aes(colour = sex)) + ggtitle("Marginal survival")
-
-# Plot the conditional and the marginal survival in the same place
-library(dplyr)
-library(tidyr)
-pred2 \%>\%
-  gather(key = variable, value = survival, survival, survival_m) \%>\%
-  mutate(variable = ifelse(variable == "survival", "conditional", "marginal")) \%>\%
-  ggplot(aes(x = time, y = survival, colour = sex, linetype = variable)) +
-  geom_step() + ggtitle("Survival by sex")
-
-# The hazard ratio
-hr_conditional <- pred2$cumhaz[pred2$sex == "female"] / pred2$cumhaz[pred2$sex == "male"]
-hr_marginal <- pred2$cumhaz_m[pred2$sex == "female"] / pred2$cumhaz_m[pred2$sex == "male"]
-time <- pred2$time[pred2$sex == "male"]
-
-plot(time, hr_marginal, type = "s", col = 2, main = "Hazard ratio female vs male")
-lines(time, hr_conditional, type = "s")
-legend(c("conditional", "marginal"), x = "bottomleft", col = c(1,2), lty = 1)
-# The marginal hazard ratio in the case of gamma frailty shrinks towards 1
-# With positive stable, this plot would be two parallel lines
-
-# Or easier, in this way:
-plot_hr(m1, newdata = data.frame(sex = c("female", "male"), age = c(44, 44)))
-}
 }
 \seealso{
-\code{\link{plot_pred}}, \code{\link{plot_hr}}
+\code{\link{plot.emfrail}}, \code{\link{autoplot.emfrail}}
 }

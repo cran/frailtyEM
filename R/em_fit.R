@@ -12,12 +12,12 @@ em_fit <- function(logfrailtypar, dist, pvfm,
   #nev_tp <- tapply(X = Y[,3], INDEX = Y[,2], sum)
 
 
-  .pars <- dist_to_pars(dist, logfrailtypar, pvfm)
+  pars <- dist_to_pars(dist, logfrailtypar, pvfm)
   if (isTRUE(inner_control$verbose)) {
-    print(paste0(#"dist=", .pars$dist,
+    print(paste0(#"dist=", pars$dist,
       "logfrailtypar= ", logfrailtypar,
-      " / alpha=", .pars$alpha,
-      " / bbeta=", .pars$bbeta))
+      " / alpha=", pars$alpha,
+      " / bbeta=", pars$bbeta))
   }
 
   if(logfrailtypar < -100) warning("theta virtually 0; try another starting value")
@@ -57,13 +57,13 @@ em_fit <- function(logfrailtypar, dist, pvfm,
   while(!isTRUE(convergence)) {
 
     if(isTRUE(inner_control$fast_fit)) {
-      e_step_val <- fast_Estep(Cvec, Cvec_lt, atrisk$nev_id, alpha = .pars$alpha, bbeta = .pars$bbeta, pvfm = pvfm, dist = .pars$dist)
+      e_step_val <- fast_Estep(Cvec, Cvec_lt, atrisk$nev_id, alpha = pars$alpha, bbeta = pars$bbeta, pvfm = pvfm, dist = pars$dist)
     } else {
-      e_step_val <- Estep(Cvec, Cvec_lt, atrisk$nev_id, alpha = .pars$alpha, bbeta = .pars$bbeta, pvfm = pvfm, dist = .pars$dist)
+      e_step_val <- Estep(Cvec, Cvec_lt, atrisk$nev_id, alpha = pars$alpha, bbeta = pars$bbeta, pvfm = pvfm, dist = pars$dist)
     }
 
-    # a1 <- fast_Estep(Cvec + Cvec_lt, rep(0, length(Cvec)), nev_id, alpha = .pars$alpha, bbeta = .pars$bbeta, pvfm = pvfm, dist = .pars$dist)
-    # a2 <- fast_Estep(Cvec_lt, rep(0, length(Cvec)), rep(0, length(Cvec)), alpha = .pars$alpha, bbeta = .pars$bbeta, pvfm = pvfm, dist = .pars$dist)
+    # a1 <- fast_Estep(Cvec + Cvec_lt, rep(0, length(Cvec)), nev_id, alpha = pars$alpha, bbeta = pars$bbeta, pvfm = pvfm, dist = pars$dist)
+    # a2 <- fast_Estep(Cvec_lt, rep(0, length(Cvec)), rep(0, length(Cvec)), alpha = pars$alpha, bbeta = pars$bbeta, pvfm = pvfm, dist = pars$dist)
     #
     # if(!isTRUE(all.equal(a1[,3] - a2[,3], e_step_val[,3]))) stop("sum ting wong")
     #
@@ -79,11 +79,12 @@ em_fit <- function(logfrailtypar, dist, pvfm,
     #
      logz <- log((e_step_val[,1] / e_step_val[,2])[atrisk$order_id])
     # something only for the gamma:
-    # logz <- log(rep((.pars$alpha + nev_id )/ (.pars$alpha + Cvec),   rle(id)$lengths))
+    # logz <- log(rep((pars$alpha + nev_id )/ (pars$alpha + Cvec),   rle(id)$lengths))
 
 
     loglik <- sum((log(basehaz_line) + g_x)[Y[,3] == 1]) +
-     sum(e_step_val[,3]) + sum(Y[,3]) - sum((atrisk$nevent * log(atrisk$nevent))[atrisk$nevent > 0])# +  sum(nev_id * lp_individual)
+     sum(e_step_val[,3]) + sum(Y[,3]) -
+      sum((atrisk$nevent * log(atrisk$nevent))[atrisk$nevent > 0])# +  sum(nev_id * lp_individual)
 
     if(loglik < loglik_old - inner_control$lik_tol)
       warning(paste0("likelihood decrease of ", loglik - loglik_old ))
@@ -102,7 +103,7 @@ em_fit <- function(logfrailtypar, dist, pvfm,
 
     #cc1 <- coxph(Surv(tstart, tstop, status) ~ x + offset(logz), dat1, method = "breslow")
 
-    # NOTE: this ids what linear.predictors actually is:
+    # NOTE: this is what linear.predictors actually is:
     # exp(mcox$coefficients * (Xmat - mean(Xmat)) + logz)
 
     # How I calculate the cumulative hazard corresponding to each line in the data set...
@@ -159,6 +160,7 @@ em_fit <- function(logfrailtypar, dist, pvfm,
   }  # for when maximizing
 
 
+
   tev <- atrisk$time[haz > 0]
   haz_tev = haz[haz > 0]
 
@@ -170,6 +172,7 @@ em_fit <- function(logfrailtypar, dist, pvfm,
       Vcov <- matrix(NA, ncol(Xmat) + length(tev), ncol(Xmat) + length(tev))
     }
 
+
     res = list(loglik = loglik, # this we need
                tev = tev, # event time points
                haz = haz_tev, # the Breslow estimator for ech tev
@@ -177,8 +180,7 @@ em_fit <- function(logfrailtypar, dist, pvfm,
                Cvec = Cvec, #the Lambdatildei, I don't think I need that. But maybe I do?
                estep = e_step_val, # the E step object, just keep it like that.
                coef = mcox$coefficients, # the maximized coefficients. I need this.
-               Vcov = Vcov) # the Vcov matrix
-
+               Vcov = Vcov)
     return(res)
   }
 
@@ -253,27 +255,27 @@ em_fit <- function(logfrailtypar, dist, pvfm,
       estep_again <- fast_Estep(Cvec,
                                 Cvec_lt,
                                 atrisk$nev_id,
-                                alpha = .pars$alpha,
-                                bbeta = .pars$bbeta,
+                                alpha = pars$alpha,
+                                bbeta = pars$bbeta,
                                 pvfm = pvfm,
-                                dist = .pars$dist)
+                                dist = pars$dist)
       z <- estep_again[,1] / estep_again[,2]
       zz <- estep_again[,4]
     } else {
       estep_plusone <- Estep(Cvec,
                              Cvec_lt,
                              atrisk$nev_id+1,
-                             alpha = .pars$alpha,
-                             bbeta = .pars$bbeta,
+                             alpha = pars$alpha,
+                             bbeta = pars$bbeta,
                              pvfm = pvfm,
-                             dist = .pars$dist)
+                             dist = pars$dist)
       estep_again <- Estep(Cvec,
                            Cvec_lt,
                            atrisk$nev_id,
-                           alpha = .pars$alpha,
-                           bbeta = .pars$bbeta,
+                           alpha = pars$alpha,
+                           bbeta = pars$bbeta,
                            pvfm = pvfm,
-                           dist = .pars$dist)
+                           dist = pars$dist)
       zz <- estep_plusone[,1] /estep_again[,2]
       z <- estep_again[,1] / estep_again[,2]
     }
@@ -363,21 +365,28 @@ em_fit <- function(logfrailtypar, dist, pvfm,
   }
 
 
+  # this is supppper slow / not the Map part but the lapply and the Reduce.
+
+  # cor_dh <- Reduce("+", lapply(
+  #   Map(function(a,b) a * b,
+  #       elp_to_tev,
+  #       sqrt(zz - z^2)),
+  #   function(x) x %*% t(x)
+  # )
+  # )
 
 
-  cor_dh <- Reduce("+", lapply(
-    Map(function(a,b) a * b,
-        elp_to_tev,
-        sqrt(zz - z^2)),
-    function(x) x %*% t(x)
-  )
-  )
+#
+  a <- Map(function(a,b) a * b,
+      elp_to_tev,
+      sqrt(zz - z^2))
+  m <- matrix(0, length(a[[1]]),  length(a[[1]]))
+  m[upper.tri(m, diag = TRUE)] <- sumxxt(a, length(a[[1]]))
+  cor_dh <- m + t(m) - diag(diag(m))
 
+  #all.equal(m2, cor_dh)
 
-
-
-
-  # cor_dh <- elp_to_tev %>%  # these are the c_ik without the z man.
+  # cor_dh <- elp_to_tev %>%  # these are the c_ik without the z.
   #   lapply(function(x) x %*% t(x)) %>%
   #   mapply(function(a,b) a * b, ., zz - z^2, SIMPLIFY = FALSE) %>%
   #   Reduce("+",.)
@@ -416,7 +425,9 @@ em_fit <- function(logfrailtypar, dist, pvfm,
                Cvec = Cvec, #the Lambdatildei, I don't think I need that. But maybe I do?
                estep = e_step_val, # the E step object, just keep it like that.
                coef = mcox$coefficients, # the maximized coefficients. I need this.
-               Vcov = Vcov) # the Vcov matrix
+               Vcov = Vcov,
+               fitted = g_x + logz, # fitted values of the linear predictor
+               cumhaz_line = cumhaz_line) # the Vcov matrix
 
     res
   }
