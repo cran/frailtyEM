@@ -1,0 +1,128 @@
+---
+title: "Cumulative hazards in coxph"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# The example from frailtyEM
+```{r}
+library(frailtyEM)
+
+kidney$sex <- ifelse(kidney$sex == 1, "male", "female")
+m1 <- emfrail(formula = Surv(time, status) ~  sex + age  + cluster(id),
+              data =  kidney)
+
+newdata2 <- data.frame(sex = c("female", "male"),
+                       age = c(30, 30),
+                       tstart = c(0, 40),
+                       tstop = c(40, Inf))
+
+# predict(m1, newdata = newdata2,
+#         individual = TRUE,
+#         quantity = "cumhaz", conf_int = NULL)
+```
+
+In Survival frailty objects, you can get the baseline hazard but that's it:
+```{r}
+m2 <- coxph(formula = Surv(time, status) ~  sex + age  + frailty(id),
+              data =  kidney, ties = "breslow")
+#str(m2)
+sf_cph <- survfit(m2)
+sf_cph$cumhaz
+```
+
+Question is: for which individual is this? I think it's from an "average" individual. The average individual in `coxph` models is given by this:
+```{r}
+m2$means
+```
+
+Then the mean individual has linear predictor
+```{r}
+m2$coefficients %*% m2$means
+```
+
+In frailtyEM that's how you get a predicted curve for an arbitrary linear predictor:
+```{r}
+plot(m1, type = "pred", lp = m2$coefficients %*% m2$means, type_pred = "conditional", conf_int = FALSE)
+with(sf_cph, lines(sf_cph$time, sf_cph$cumhaz, type = "s", col = 2, lty = 2, lwd = 2))
+```
+
+# What frailtyEM does behind the scenes
+The logic of this is that if you have the cumulative hazard for an individual $\Lambda_i(t|z) = z \Lambda_i(t|z=0)$  then
+the marginal survival associated with this individual (e.g. with these specific values of the covariates) is
+$$
+S_i(t) = E[\exp(-Z \Lambda_i(t|z=0))] = \mathcal{L}(\Lambda_i(t|z=0))
+$$
+with $\mathcal{L}$ the Laplace transform of $Z$. 
+Then the marginal cumulative hazard for this individual is
+$$
+\Lambda_i(t) = -\log S_i(t)
+$$
+So the big trick is to write $\Lambda_i(t|z=0)$ for the specific path of the covariates that you need.
+
+# from frailtyEM to ad-hoc coding
+The `newdata` argument I won't translate here, rather I think you'll have to calculate the linear predictor values for an individual on different time slots. In the data frame above, for instance,
+```{r}
+newdata2 <- data.frame(sex = c("female", "male"),
+                       age = c(30, 30),
+                       tstart = c(0, 40),
+                       tstop = c(40, Inf))
+```
+
+The easiest is to calculate this by hand:
+```{r}
+m2$coefficients
+lp_1 <- as.numeric(c(0, 30) %*% m2$coefficients)
+lp_2 <- as.numeric(c(1, 30) %*% m2$coefficients)
+```
+
+Second ingredient you need is the hazard estimates, rather than the cumulative hazard estimates.
+```{r}
+# baseline cumulative hazard
+H0 <- survfit(m2)$cumhaz / exp(as.numeric(m2$coefficients %*% m2$means))
+# baseline hazard
+time <- survfit(m2)$time 
+h0 <- diff(c(0, H0))
+```
+So this makes sense because this is 0 at censoring times. 
+
+Now you have to multiply each $h_0$ by the nice corresponding lp  according to time
+```{r}
+hi <- h0
+hi[time < 40] <- hi[time < 40] * exp(lp_1)
+hi[time >= 40] <- hi[time >= 40] * exp(lp_2) 
+Hi <- cumsum(hi)
+```
+
+And now there is the cumulative hazard! Let's check. These are super similar, right?
+```{r}
+plot(m1, type = "pred", newdata = newdata2,
+        individual = TRUE,
+        quantity = "cumhaz", conf_int = "nothanks", type_pred = "conditional",
+     main = "Conditional cumulative hazards")
+lines(survfit(m2)$time, Hi, col = 2, lty = 2, type = "s")
+```
+
+# Make it marginal
+Now it's a trick. For this I use an internal function in which I have stored the Laplace transforms. The gamma Laplace transform from a gamam distribution with mean 1 and variance $1/\theta$ is 
+$$
+\mathcal{L}(c) = \left(\frac{\theta}{\theta + c}\right)^\theta
+$$
+```{r}
+theta <- 1 / m2$history[[1]][[1]]
+```
+
+Then finally the marginal hazard:
+```{r}
+Hi_mar <- - log((theta / (theta + Hi))^theta)
+```
+
+Another check:
+```{r}
+plot(m1, type = "pred", newdata = newdata2,
+        individual = TRUE,
+        quantity = "cumhaz", conf_int = "nothanks", type_pred = "marginal",
+     main = "Marginal cumulative hazards")
+lines(survfit(m2)$time, Hi_mar, col = 2, lty = 2, type = "s")
+```

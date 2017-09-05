@@ -177,7 +177,7 @@ em_fit <- function(logfrailtypar, dist, pvfm,
                tev = tev, # event time points
                haz = haz_tev, # the Breslow estimator for ech tev
                nev_id = atrisk$nev_id,
-               Cvec = Cvec, #the Lambdatildei, I don't think I need that. But maybe I do?
+               Cvec = Cvec, #the Lambdatildei
                estep = e_step_val, # the E step object, just keep it like that.
                coef = mcox$coefficients, # the maximized coefficients. I need this.
                Vcov = Vcov)
@@ -240,12 +240,15 @@ em_fit <- function(logfrailtypar, dist, pvfm,
 
   Imat <- matrix(0, ncol(Xmat) + length(tev), ncol(Xmat) + length(tev))
 
-  Imat[1:length(mcox$coefficients), 1:length(mcox$coefficients)] <- m_d2l_dgdg
+  if(!is.null(mcox$coefficients)) {
+    Imat[1:length(mcox$coefficients), 1:length(mcox$coefficients)] <- m_d2l_dgdg
+    Imat[1:length(mcox$coefficients), (length(mcox$coefficients)+1):nrow(Imat) ] <- t(m_d2l_dhdg)
+    Imat[(length(mcox$coefficients)+1):nrow(Imat), 1:length(mcox$coefficients) ] <- m_d2l_dhdg
+  }
+
 
   Imat[(length(mcox$coefficients)+1):nrow(Imat), (length(mcox$coefficients)+1):nrow(Imat)] <- m_d2l_dhdh
 
-  Imat[1:length(mcox$coefficients), (length(mcox$coefficients)+1):nrow(Imat) ] <- t(m_d2l_dhdg)
-  Imat[(length(mcox$coefficients)+1):nrow(Imat), 1:length(mcox$coefficients) ] <- m_d2l_dhdg
 
   # if(any(eigen(Imat)$values<0)) warning("Imat naive negative eigenvalues")
 
@@ -413,7 +416,7 @@ em_fit <- function(logfrailtypar, dist, pvfm,
 
   #Imat %>% solve %>% diag %>% sqrt
 
-  Vcov = solve(Imat)
+  Vcov = try(solve(Imat))
 
 
   # with this one we will also need SE estimates and all the stuff
@@ -422,7 +425,7 @@ em_fit <- function(logfrailtypar, dist, pvfm,
                tev = tev, # event time points
                haz = haz_tev, # the Breslow estimator for ech tev
                nev_id = atrisk$nev_id,
-               Cvec = Cvec, #the Lambdatildei, I don't think I need that. But maybe I do?
+               Cvec = Cvec, #the Lambdatildei
                estep = e_step_val, # the E step object, just keep it like that.
                coef = mcox$coefficients, # the maximized coefficients. I need this.
                Vcov = Vcov,

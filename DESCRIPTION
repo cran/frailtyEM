@@ -1,7 +1,7 @@
 Package: frailtyEM
 Type: Package
 Title: Fitting Frailty Models with the EM Algorithm
-Version: 0.7.0-1
+Version: 0.7.2
 Author: Theodor Adrian Balan, Hein Putter
 Maintainer: Theodor Adrian Balan <t.a.balan@lumc.nl>
 URL: https://github.com/teddybalan/frailtyEM
@@ -15,16 +15,16 @@ License: GPL (>= 2)
 Encoding: UTF-8
 LazyData: true
 Depends: R (>= 3.3.0), survival
-Imports: Rcpp (>= 0.12.8), magrittr, msm, ggplot2, expint
+Imports: Rcpp (>= 0.12.8), magrittr, msm, ggplot2, expint, tibble
 LinkingTo: Rcpp
 RoxygenNote: 6.0.1
 Suggests: dplyr, statmod, plotly, gridExtra
-Collate: 'RcppExports.R' 'autoplot.emfrail.R' 'ca_test.R' 'em_fit.R'
-        'emfrail_aux.R' 'emfrail.R' 'emfrail_arguments.R'
-        'emfrail_methods.R' 'fast_Estep.R' 'plot.emfrail.R'
-        'predict.emfrail.R' 'print.emfrail.R' 'print.emfrail_summary.R'
-        'summary.emfrail.R'
+Collate: 'RcppExports.R' 'autoplot.emfrail.R' 'ca_test_cph.R'
+        'ca_test_fit.R' 'em_fit.R' 'emfrail_aux.R' 'emfrail.R'
+        'emfrail_arguments.R' 'emfrail_methods.R' 'fast_Estep.R'
+        'plot.emfrail.R' 'predict.emfrail.R' 'print.emfrail.R'
+        'print.emfrail_summary.R' 'summary.emfrail.R'
 NeedsCompilation: yes
-Packaged: 2017-06-17 11:14:45 UTC; theodor
+Packaged: 2017-09-05 18:24:58 UTC; theodor
 Repository: CRAN
-Date/Publication: 2017-06-17 14:37:24 UTC
+Date/Publication: 2017-09-05 18:31:24 UTC

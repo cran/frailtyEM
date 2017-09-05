@@ -7,7 +7,7 @@ using namespace Rcpp;
 
 // Estep
 NumericMatrix Estep(NumericVector c, NumericVector c_lt, IntegerVector delta, double alpha, double bbeta, const double& pvfm, const int& dist);
-RcppExport SEXP frailtyEM_Estep(SEXP cSEXP, SEXP c_ltSEXP, SEXP deltaSEXP, SEXP alphaSEXP, SEXP bbetaSEXP, SEXP pvfmSEXP, SEXP distSEXP) {
+RcppExport SEXP _frailtyEM_Estep(SEXP cSEXP, SEXP c_ltSEXP, SEXP deltaSEXP, SEXP alphaSEXP, SEXP bbetaSEXP, SEXP pvfmSEXP, SEXP distSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -24,7 +24,7 @@ END_RCPP
 }
 // inf_mat_match
 NumericVector inf_mat_match(NumericVector left, NumericVector right, NumericVector elp, int maxlength);
-RcppExport SEXP frailtyEM_inf_mat_match(SEXP leftSEXP, SEXP rightSEXP, SEXP elpSEXP, SEXP maxlengthSEXP) {
+RcppExport SEXP _frailtyEM_inf_mat_match(SEXP leftSEXP, SEXP rightSEXP, SEXP elpSEXP, SEXP maxlengthSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -38,7 +38,7 @@ END_RCPP
 }
 // sumxxt
 NumericVector sumxxt(List x, int L);
-RcppExport SEXP frailtyEM_sumxxt(SEXP xSEXP, SEXP LSEXP) {
+RcppExport SEXP _frailtyEM_sumxxt(SEXP xSEXP, SEXP LSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -47,4 +47,16 @@ BEGIN_RCPP
     rcpp_result_gen = Rcpp::wrap(sumxxt(x, L));
     return rcpp_result_gen;
 END_RCPP
+}
+
+static const R_CallMethodDef CallEntries[] = {
+    {"_frailtyEM_Estep", (DL_FUNC) &_frailtyEM_Estep, 7},
+    {"_frailtyEM_inf_mat_match", (DL_FUNC) &_frailtyEM_inf_mat_match, 4},
+    {"_frailtyEM_sumxxt", (DL_FUNC) &_frailtyEM_sumxxt, 2},
+    {NULL, NULL, 0}
+};
+
+RcppExport void R_init_frailtyEM(DllInfo *dll) {
+    R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
+    R_useDynamicSymbols(dll, FALSE);
 }

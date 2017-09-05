@@ -405,8 +405,6 @@ emfrail <- function(formula,
 
   nev_id <- rowsum(Y[,3], id) # nevent per id or am I going crazy
 
-
-  # for the baseline hazard how the fuck is that gonna happen?
   # Idea: nrisk has the sum of elp who leave later at every tstop
   # esum has the sum of elp who enter at every tstart
   # indx groups which esum is right after each nrisk;
@@ -425,7 +423,7 @@ emfrail <- function(formula,
   etime <- c(0, sort(unique(Y[, 1])),  max(Y[, 1]) + min(diff(time)))
   indx <- findInterval(time, etime, left.open = TRUE) # left.open  = TRUE is very important
 
-  # this gives for every tstart (line variable) after which event time did it come
+  # this gives for every tstart (line variable), after which event time did it come
   # indx2 <- findInterval(Y[,1], time, left.open = FALSE, rightmost.closed = TRUE)
   indx2 <- findInterval(Y[,1], time)
 
@@ -574,6 +572,10 @@ emfrail <- function(formula,
          Cvec_lt = Cvec_lt, se = FALSE,
          inner_control = control$inner_control)
 
+  if(lower_llik - outer_m$minimum < 1.92) {
+    theta_low <- control$lik_ci_intervals$interval[1]
+    warning("tolerance limit reached; should maybe take a lower value for control$lik_ci_intervals[1]")
+  } else
   theta_low <- uniroot(function(x, ...) outer_m$minimum - em_fit(x, ...) + 1.92,
                        interval = c(control$lik_ci_intervals$interval[1], outer_m$estimate),
                        f.lower = outer_m$minimum - lower_llik + 1.92, f.upper = 1.92,
@@ -588,8 +590,7 @@ emfrail <- function(formula,
                        maxiter = 100)$root
 
 
-  # this says that if I can't get a significant difference on the right side
-  # then screw this it's infinity
+  # this says that if I can't get a significant difference on the right side, then it's infinity
   if(upper_llik  - outer_m$minimum < 1.92) theta_high <- Inf else
     theta_high <- uniroot(function(x, ...) outer_m$minimum - em_fit(x, ...) + 1.92,
                           interval = c(outer_m$estimate, control$lik_ci_intervals$interval[2]),
@@ -636,7 +637,7 @@ emfrail <- function(formula,
     lfp_minus <- max(outer_m$estimate - h , outer_m$estimate - 5)
     lfp_plus <- min(outer_m$estimate + h , outer_m$estimate + 5)
 
-    message("Calculating adjustment for information matrix...")
+#    message("Calculating adjustment for information matrix...")
 
 
     final_fit_minus <- em_fit(logfrailtypar = lfp_minus,
@@ -693,7 +694,6 @@ emfrail <- function(formula,
 
     lfr2 <- (digamma(numerator))^2 + trigamma(numerator) - (log(denominator))^2 - 2 * log(denominator) * lfr
 
-    # score test 1 I think
     r <- cor(lfr, Mres_id)
     tr <- r* sqrt((length(fr) - 2) / (1 - r^2))
     p.cor <- pchisq(tr^2, df = 1, lower.tail = F)
@@ -704,8 +704,6 @@ emfrail <- function(formula,
   if(!isTRUE(model)) model_frame <- NULL else
     model_frame <- mf
   if(!isTRUE(model.matrix)) X <- NULL
-
-  # other stuff that I can calculate
 
 
 
@@ -735,9 +733,11 @@ emfrail <- function(formula,
   # these are things that make the predict work and other methods
   terms_2 <- delete.response(attr(mf, "terms"))
   pos_cluster_2 <- grep("cluster", attr(terms_2, "term.labels"))
-  terms <- drop.terms(terms_2, pos_cluster_2)
-  myxlev <- .getXlevels(terms, mf)
-  attr(res, "metadata") <- list(terms, myxlev)
+  if(!is.null(mcox$coefficients)) {
+    terms <- drop.terms(terms_2, pos_cluster_2)
+    myxlev <- .getXlevels(terms, mf)
+    attr(res, "metadata") <- list(terms, myxlev)
+  }
   attr(res, "call") <-  Call
   attr(res, "class") <- "emfrail"
 
