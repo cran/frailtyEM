@@ -1,3 +1,13 @@
+# frailtyEM 0.7.9
+
+As compared to the previous CRAN release, 0.7.2:
+- fixed a bug where the estimation would go wrong when the data set was not ordered according to the cluster
+- fixed a bug where `emfrail` would crash when the cluster colum would be a character vector
+- fixed a bug where the test for dependent censoring would not work
+- part of the output is now nicer (e.g. the `frail` vector is named, the `autoplot.emfrail()` gives a nicer plot)
+- removed a bunch of redundant calculations and old pieces of code
+- minor corrections in the vignette
+
 # frailtyEM 0.7.2
 As compared to the previous CRAN release, 0.7.0:
 

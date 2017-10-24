@@ -1,11 +1,11 @@
 Package: frailtyEM
 Type: Package
 Title: Fitting Frailty Models with the EM Algorithm
-Version: 0.7.2
+Version: 0.7.9
 Author: Theodor Adrian Balan, Hein Putter
 Maintainer: Theodor Adrian Balan <t.a.balan@lumc.nl>
-URL: https://github.com/teddybalan/frailtyEM
-BugReports: https://github.com/teddybalan/frailtyEM/issues
+URL: https://github.com/tbalan/frailtyEM
+BugReports: https://github.com/tbalan/frailtyEM/issues
 Description: Contains functions for fitting shared frailty models with a semi-parametric
     baseline hazard with the Expectation-Maximization algorithm. Supported data formats 
     include clustered failures with left truncation and recurrent events in gap-time
@@ -25,6 +25,6 @@ Collate: 'RcppExports.R' 'autoplot.emfrail.R' 'ca_test_cph.R'
         'plot.emfrail.R' 'predict.emfrail.R' 'print.emfrail.R'
         'print.emfrail_summary.R' 'summary.emfrail.R'
 NeedsCompilation: yes
-Packaged: 2017-09-05 18:24:58 UTC; theodor
+Packaged: 2017-10-24 11:46:47 UTC; theodor
 Repository: CRAN
-Date/Publication: 2017-09-05 18:31:24 UTC
+Date/Publication: 2017-10-24 11:57:06 UTC

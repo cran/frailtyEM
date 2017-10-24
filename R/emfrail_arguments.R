@@ -35,7 +35,7 @@
 #' automatically be changed to FALSE. When the number of events in a cluster / individual is not very small, the cases for which
 #' fast fitting is available will show an improvement in performance.
 #'
-#' The starting value of the outer optimization may be set in the \code{.distribution} argument.
+#' The starting value of the outer optimization may be set in the \code{distribution} argument.
 #'
 #' @seealso \code{\link{emfrail}}, \code{\link{emfrail_dist}}, \code{\link{emfrail_pll}}
 #' @examples
@@ -75,10 +75,11 @@ emfrail_control <- function(opt_fit = TRUE,
       warning("extreme values for interval, there might be some numerical trouble")
   }
 
+  # make sure the defaults of these function are the same as those from the input!
   inner_c <- function(eps = 0.0001,
                       maxit = Inf,
                       fast_fit = TRUE,
-                      verbose = TRUE,
+                      verbose = FALSE,
                       lower_tol = 20,
                       lik_tol = 1) {
     list(eps = eps,
@@ -120,7 +121,8 @@ emfrail_control <- function(opt_fit = TRUE,
 #'
 #' @details The \code{theta} argument must be positive. In the case of gamma or PVF, this is the inverse of
 #'  the frailty variance, i.e. the larger the \code{theta} is,
-#'  the closer the model is to a Cox model. For the positive stable distribution, the \eqn{\gamma} parameter of the Laplace trnasform is
+#'  the closer the model is to a Cox model. When \code{dist = "pvf"} and \code{pvfm = -0.5}, the inverse Gaussian
+#'  distribution is obtained. For the positive stable distribution, the \eqn{\gamma} parameter of the Laplace transform is
 #'  \eqn{\theta / (1 + \theta)}, with the \eqn{alpha} parameter fixed to 1.
 #'
 #' @seealso \code{\link{emfrail}, \link{emfrail_control}}

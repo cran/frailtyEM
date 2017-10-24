@@ -65,10 +65,10 @@
 #' \item{var}{The variance-covariance matrix corresponding to the coefficients and hazard, assuming \eqn{\theta} constant}
 #' \item{var_adj}{The variance-covariance matrx corresponding to the
 #' coefficients and hazard, adjusted for the estimation of theta}
-#' \item{theta}{The point estimate of \eqn{\theta}. For the gamma and
+#' \item{logtheta}{The logarithm of the point estimate of \eqn{\theta}. For the gamma and
 #' PVF family of distributions, this is the inverse of the estimated frailty variance.}
-#' \item{var_theta}{The variance of the estimated \eqn{\theta}}
-#' \item{ci_theta}{The likelihood-based 95\% confidence interval for \eqn{\theta}}
+#' \item{var_logtheta}{The variance of the estimated logarithm of \eqn{\theta}}
+#' \item{ci_logtheta}{The likelihood-based 95\% confidence interval for the logarithm of \eqn{\theta}}
 #' \item{frail}{The posterior (empirical Bayes) estimates of the frailty for each cluster}
 #' \item{residuals}{A list with two elements, cluster which is a vector that the sum of the
 #' cumulative hazards from each cluster for a frailty value of 1, and
@@ -300,12 +300,6 @@ emfrail <- function(formula,
 
   # This part is because the update breaks old code
   extraargs <- list(...)
-  if(length(extraargs) >0) {
-    if(".formula" %in% names(extraargs)) stop(".formula has been deprecated; use formula")
-    if(".data" %in% names(extraargs)) stop(".data has been deprecated; use data")
-    if(".control" %in% names(extraargs)) stop(".control has been deprecated; use control")
-    if(".distribution" %in% names(extraargs)) stop(".distribution has been deprecated; use distribution")
-  }
 
   if(!inherits(formula, "formula")) {
     if(inherits(formula, "data.frame")) warning("You gave a data.frame instead of a formula.
@@ -403,7 +397,13 @@ emfrail <- function(formula,
 
   explp <- exp(mcox$linear.predictors) # these are with centered covariates
 
-  nev_id <- rowsum(Y[,3], id) # nevent per id or am I going crazy
+  # now thing is that maybe this is not very necessary,
+  # but it keeps track of which row belongs to which cluster
+  # and then we don't have to keep on doing this
+  order_id <- match(id, unique(id))
+
+  nev_id <- as.numeric(rowsum(Y[,3], order_id, reorder = FALSE)) # nevent per id or am I going crazy
+  names(nev_id) <- unique(id)
 
   # Idea: nrisk has the sum of elp who leave later at every tstop
   # esum has the sum of elp who enter at every tstart
@@ -428,7 +428,6 @@ emfrail <- function(formula,
   indx2 <- findInterval(Y[,1], time)
 
   time_to_stop <- match(Y[,2], time)
-  order_id <- findInterval(id, unique(id))
 
   atrisk <- list(death = death, nevent = nevent, nev_id = nev_id,
                  order_id = order_id, time = time, indx = indx, indx2 = indx2,
@@ -447,7 +446,7 @@ emfrail <- function(formula,
   cumhaz_tstart <- c(0, cumhaz)[atrisk$indx2 + 1]
   cumhaz_line <- (cumhaz_0_line - cumhaz_tstart)  * explp / newrisk
 
-  Cvec <- rowsum(cumhaz_line, atrisk$order_id)
+  Cvec <- rowsum(cumhaz_line, atrisk$order_id, reorder = FALSE)
 
   ca_test <- NULL
 
@@ -460,7 +459,7 @@ emfrail <- function(formula,
     cumhaz_tstop <- cumsum(haz)
     cumhaz_tstart <- c(0, cumhaz_tstop)[indx2 + 1]
 
-    Cvec_lt <- rowsum(cumhaz_tstart, order_id)
+    Cvec_lt <- rowsum(cumhaz_tstart, atrisk$order_id, reorder = FALSE)
     # Cvec_lt <- tapply(X = cumhaz_tstart,
     #                   INDEX = id,
     #                   FUN = sum)
@@ -479,50 +478,8 @@ emfrail <- function(formula,
   }
 
 
-
-  # With the stable distribution, a problem pops up for small values, i.e. very large association (tau large)
-  # So there is another interval...
-  if(distribution$dist == "stable") {
-    control$lik_ci_intervals$interval <- control$lik_ci_intervals$interval_stable
-  }
-
-  # add a bit to the interval so that it gets to the Cox likelihood, if it is at that end of the parameter space
-
-  # Maybe try nlm as well. Looks alright!
-
-  # outer_m <- optimize(f = em_fit,
-  #                     interval = control$opt_control$interval + c(0, 0.1),
-  #                     dist = distribution$dist, pvfm = distribution$pvfm,
-  #          Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
-  #          mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
-  #          Cvec = Cvec, lt = distribution$left_truncation,
-  #          Cvec_lt = Cvec_lt,
-  #          control = control)
-
-  # Hessian
-  # hess <- numDeriv::hessian(func = em_fit,
-  #         x = outer_m$minimum,
-  #         dist = distribution$dist, pvfm = distribution$pvfm,
-  #         Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
-  #         mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
-  #         Cvec = Cvec, lt = distribution$left_truncation,
-  #         Cvec_lt = Cvec_lt,
-  #         control = control)
-
-  #
-  # outer_m <- optim(fn = em_fit,
-  #                par = 2, hessian = TRUE,
-  #                dist = distribution$dist, pvfm = distribution$pvfm,
-  #                Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
-  #                mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
-  #                Cvec = Cvec, lt = distribution$left_truncation,
-  #                Cvec_lt = Cvec_lt, se = FALSE,
-  #                inner_control = control$inner_control)
-
-
-
   outer_m <- do.call(nlm, args = c(list(f = em_fit,
-                      p = 2, hessian = TRUE,
+                      p = log(distribution$theta), hessian = TRUE,
                       dist = distribution$dist, pvfm = distribution$pvfm,
                       Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
                       mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
@@ -531,28 +488,15 @@ emfrail <- function(formula,
                       inner_control = control$inner_control), control$nlm_control))
 
 
-#
-#   outer_m <- nlm(f = em_fit,
-#                  p = 2, hessian = TRUE,
-#                  dist = distribution$dist, pvfm = distribution$pvfm,
-#                  Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
-#                  mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
-#                  Cvec = Cvec, lt = distribution$left_truncation,
-#                  Cvec_lt = Cvec_lt, se = FALSE,
-#                  inner_control = control$inner_control, stepmax = 3)
-
-
-
-  # do.call(nlm, c(list(f = em_fit, p = 2, hessian = TRUE, dist = distribution$dist, pvfm = distribution$pvfm,
-  #                Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
-  #                mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
-  #                Cvec = Cvec, lt = distribution$left_truncation,
-  #                Cvec_lt = Cvec_lt,
-  #                control = control), control$opt_control))
-
-    # likelihood-based confidence intervals
+  # likelihood-based confidence intervals
   theta_low <- theta_high <- NULL
   if(isTRUE(control$lik_ci)) {
+
+    # With the stable distribution, a problem pops up for small values, i.e. very large association (tau large)
+    # So there I use another interval for this
+    if(distribution$dist == "stable") {
+      control$lik_ci_intervals$interval <- control$lik_ci_intervals$interval_stable
+    }
 
   lower_llik <- em_fit(control$lik_ci_intervals$interval[1],
                        dist = distribution$dist,
@@ -628,7 +572,16 @@ emfrail <- function(formula,
 
 
   # adjusted standard errors
-  if(isTRUE(control$se) & isTRUE(control$se_adj)) {
+
+  if(isTRUE(control$se) & isTRUE(attr(inner_m$Vcov, "class") == "try-error")) {
+    inner_m$Vcov <- matrix(NA, length(inner_m$coef) + length(inner_m$haz))
+    warning("Information matrix is singular")
+  }
+
+  # adjusted SE: only go on if requested and if Vcov was calculated
+  if(isTRUE(control$se) &
+     isTRUE(control$se_adj) &
+     !all(is.na(inner_m$Vcov))) {
 
     # absolute value should be redundant. but sometimes the "hessian" might be 0.
     # in that case it might appear negative; this happened only on Linux...
@@ -637,15 +590,13 @@ emfrail <- function(formula,
     lfp_minus <- max(outer_m$estimate - h , outer_m$estimate - 5)
     lfp_plus <- min(outer_m$estimate + h , outer_m$estimate + 5)
 
-#    message("Calculating adjustment for information matrix...")
-
 
     final_fit_minus <- em_fit(logfrailtypar = lfp_minus,
                               dist = distribution$dist, pvfm = distribution$pvfm,
                               Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
                               mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
                               Cvec = Cvec, lt = distribution$left_truncation,
-                              Cvec_lt = Cvec_lt, se = TRUE,
+                              Cvec_lt = Cvec_lt, se = FALSE,
                               inner_control = control$inner_control,
                               return_loglik = FALSE)
 
@@ -654,7 +605,7 @@ emfrail <- function(formula,
                              Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
                              mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
                              Cvec = Cvec, lt = distribution$left_truncation,
-                             Cvec_lt = Cvec_lt, se = TRUE,
+                             Cvec_lt = Cvec_lt, se = FALSE,
                              inner_control = control$inner_control, return_loglik = FALSE)
 
 
@@ -669,10 +620,12 @@ emfrail <- function(formula,
     #adj_se <- sqrt(diag(deta_dtheta %*% (1/(attr(opt_object, "details")[[3]])) %*% t(deta_dtheta)))
 
     # vcov_adj = inner_m$Vcov + deta_dtheta %*% (1/(attr(outer_m, "details")[[3]])) %*% t(deta_dtheta)
-    vcov_adj = inner_m$Vcov + deta_dtheta %*% (1/outer_m$hessian) %*% t(deta_dtheta)
+   vcov_adj = inner_m$Vcov + deta_dtheta %*% (1/outer_m$hessian) %*% t(deta_dtheta)
 
-  } else vcov_adj = matrix(NA, nrow(inner_m$Vcov), nrow(inner_m$Vcov))
-
+  } else
+    if(all(is.na(inner_m$Vcov)))
+      vcov_adj <- inner_m$Vcov else
+        vcov_adj = matrix(NA, nrow(inner_m$Vcov), nrow(inner_m$Vcov))
 
 
   if(length(pos_terminal_X1) > 0 & distribution$dist == "gamma") {
@@ -681,9 +634,9 @@ emfrail <- function(formula,
     Mres <- survival::agreg.fit(x = X, y = Y, strata = NULL, offset = NULL, init = NULL,
                         control = survival::coxph.control(),
                         weights = NULL, method = "breslow", rownames = NULL)$residuals
-    Mres_id <- rowsum(Mres, atrisk$order_id)
+    Mres_id <- rowsum(Mres, atrisk$order_id, reorder = FALSE)
 
-    theta <- exp(outer_m$minimum)
+    theta <- exp(outer_m$estimate)
 
     fr <- with(inner_m, estep[,1] / estep[,2])
 
@@ -705,30 +658,31 @@ emfrail <- function(formula,
     model_frame <- mf
   if(!isTRUE(model.matrix)) X <- NULL
 
+  frail <- inner_m$frail
+  names(frail) <- unique(id)
 
-
-  res <- list(coefficients = inner_m$coef,
+  res <- list(coefficients = inner_m$coef, #
                hazard = inner_m$haz,
                var = inner_m$Vcov,
                var_adj = vcov_adj,
                logtheta = outer_m$estimate,
                var_logtheta = 1/outer_m$hessian,
                ci_logtheta = c(theta_low, theta_high),
-               frail = inner_m$estep[,1] / inner_m$estep[,2],
+               frail = frail,
                residuals = list(group = inner_m$Cvec,
                                 individual = inner_m$cumhaz_line * inner_m$fitted),
                tev = inner_m$tev,
                nevents_id = inner_m$nev_id,
                loglik = c(mcox$loglik[length(mcox$loglik)], -outer_m$minimum),
-               ca_test = ca_test,
-               cens_test = cens_test,
+               ca_test = ca_test, #
+               cens_test = cens_test, #
                formula = formula,
                distribution = distribution,
                control = control,
-               nobs = nrow(mf),
-               fitted = as.numeric(inner_m$fitted),
-               mf = model_frame,
-               mm = X)
+               nobs = nrow(mf), #
+               fitted = as.numeric(inner_m$fitted), #
+               mf = model_frame, #
+               mm = X) #
 
   # these are things that make the predict work and other methods
   terms_2 <- delete.response(attr(mf, "terms"))
