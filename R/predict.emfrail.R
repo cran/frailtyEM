@@ -4,6 +4,7 @@
 #' @param object An \code{emfrail} fit object
 #' @param newdata A data frame with the same variable names as those that appear in the \code{emfrail} formula, used to calculate the \code{lp} (optional).
 #' @param lp A vector of linear predictor values at which to calculate the curves. Default is 0 (baseline).
+#' @param strata The name of the strata (if applicable) for which the prediction should be made.
 #' @param quantity Can be \code{"cumhaz"} and/or \code{"survival"}. The quantity to be calculated for the values of \code{lp}.
 #' @param type Can be \code{"conditional"} and/or \code{"marginal"}. The type of the quantity to be calculated.
 #' @param conf_int Can be \code{"regular"} and/or \code{"adjusted"}. The type of confidence interval to be calculated.
@@ -102,6 +103,7 @@
 predict.emfrail <- function(object,
                             newdata = NULL,
                             lp = NULL,
+                            strata = NULL,
                             quantity = c("cumhaz", "survival"),
                             type = c("conditional", "marginal"),
                             conf_int = c("regular", "adjusted"),
@@ -109,7 +111,31 @@ predict.emfrail <- function(object,
                             ...) {
 
 
+  if(!is.null(quantity))
+    if(any(!(quantity %in% c("cumhaz", "survival"))))
+      stop("quantity misspecified")
+
+  if(!is.null(type))
+    if(any(!(type %in% c("conditional", "marginal"))))
+      stop("type misspecified")
+
+  # if(!is.null(conf_int))
+  #   if(any(!(conf_int %in% c("regular", "adjusted"))))
+  #     warning("conf_int misspecified")
+
   if(is.null(newdata) & is.null(lp)) stop("lp or newdata must be specified")
+
+
+
+  if(is.list(object$hazard))
+    if(length(object$hazard) > 1) {
+      if(is.null(strata)) stop("strata must be specified")
+      if(!(strata %in% names(object$hazard)))
+        stop(paste0("strata must be one of: {", paste0(names(object$hazard), collapse = ", "), "}"))
+      if(length(strata) > 1) stop("predict() only available for one strata")
+  }
+
+
 
   if(!is.null(lp) & !is.null(newdata)) stop("specify either lp or newdata")
 
@@ -153,13 +179,27 @@ predict.emfrail <- function(object,
   # there is a hack here so that the cumulative hazard actually starts from 0.
   # for this I add a fake time point before the start of the predicted curve.
 
-  delta_time <- min(diff(object$tev)) /2
+
+  # names(object$tev)
+
+
+  # select the correct strata
+  if(!is.null(strata)) {
+    tev <- object$tev[[strata]]
+    hazard <- object$hazard[[strata]]
+  } else {
+    tev <- object$tev
+    hazard <- object$hazard
+  }
+
+
+  delta_time <- min(diff(tev)) /2
 
   list_haz <- mapply(FUN = function(lp, haz, tstart, tstop, tev) {
             cbind(tev[tstart <= tev & tev < tstop],
                   lp,
                   haz[tstart <= tev & tev < tstop] * exp(lp))
-    }, lp, list(object$hazard), tstart, tstop, list(object$tev), SIMPLIFY = FALSE)
+    }, lp, list(hazard), tstart, tstop, list(tev), SIMPLIFY = FALSE)
 
   if(isTRUE(individual)) {
       res <- as.data.frame(do.call(rbind, list_haz))
@@ -184,14 +224,26 @@ predict.emfrail <- function(object,
   # for each lp we will get a data frame with a "bounds" attribute.
   # this attributie is meant to keep track of which columns we have in the data frame
 
+  # select the correct varH
+
+
+  if(!is.null(strata)) {
+    pos <- which(rep(names(object$hazard), sapply(object$hazard, length))== strata) + ncoef
+  } else
+    pos <- ncoef + 1:length(hazard)
+
+
   if(("regular" %in% conf_int) | ("adjusted" %in% conf_int)) {
-    varH <-   object$var[(ncoef + 1):nrow(object$var), (ncoef + 1):nrow(object$var)]
-    varH_adj <- object$var_adj[(ncoef + 1):nrow(object$var_adj), (ncoef + 1):nrow(object$var_adj)]
 
+
+    varH <-   object$var[pos, pos]
+    varH_adj <- object$var_adj[pos, pos]
+
+    x <- res[[1]]
     res <- lapply(res, function(x) {
-      times_res <- match(x$time[2:length(x$time)], object$tev)
+      times_res <- match(x$time[2:length(x$time)], tev)
 
-      loghaz <- log(object$hazard[times_res])
+      loghaz <- log(hazard[times_res])
 
       # Now here I build a bunch of formulas - that is to get the confidence intervals with the delta mehtod
       xs <- lapply(seq_along(times_res), function(x) text1 <- paste0("x", x))
@@ -205,7 +257,7 @@ predict.emfrail <- function(object,
       if("regular" %in% conf_int) {
 
         x$se_logH <- c(0, msm::deltamethod(g = forms,
-                                      mean = object$hazard[times_res],
+                                      mean =hazard[times_res],
                                       cov = varH[times_res, times_res],
                                       ses = TRUE))
 
@@ -216,7 +268,7 @@ predict.emfrail <- function(object,
 
       if("adjusted" %in% conf_int) {
         x$se_logH_adj <- c(0, msm::deltamethod(g = forms,
-                                          mean = object$hazard[times_res],
+                                          mean = hazard[times_res],
                                           cov = varH_adj[times_res, times_res],
                                           ses = TRUE))
 
@@ -230,6 +282,8 @@ predict.emfrail <- function(object,
       x
     })
   }
+
+
 
 
   est_dist <- object$distribution

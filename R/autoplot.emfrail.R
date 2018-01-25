@@ -16,10 +16,11 @@ autoplot <- autoplot
 #' @param lp A numeric vector of values of the linear predictor, each corresponding to a case. For \code{type == "hr"} the hazard ratio
 #' between the first two values of \code{lp} is calculated. For \code{type == "pred"} the prediction
 #' for the first value of \code{lp} is calculated.
-#' @param quantity For \code{type == "pred"} the predicted quantity; see \code{quantity} in \code{\link{predict.emfrail}}
-#' @param type_pred For \code{type == "pred"} the type of predicted quantity; see \code{type} in \code{\link{predict.emfrail}}
-#' @param conf_int For \code{type == "pred"} the type of confidence intervals; see \code{conf_int} in \code{\link{predict.emfrail}}
-#' @param individual For \code{type == "pred"} for drawing a curve when the rows of \code{newdata} refer to the same individual; see
+#' @param strata The name of the strata (if applicable) for which the prediction should be made.
+#' @param quantity One of \code{c("cumhaz", "survival")} for \code{type == "pred"}; see \code{quantity} in \code{\link{predict.emfrail}}
+#' @param type_pred One of \code{c("conditional", "marginal")} for \code{type == "pred"}; see \code{type} in \code{\link{predict.emfrail}}
+#' @param conf_int One of \code{c("regular", "adjusted")} for \code{type == "pred"}; see \code{conf_int} in \code{\link{predict.emfrail}}
+#' @param individual Logical, for \code{type == "pred"} to be used for drawing a curve when the rows of \code{newdata} refer to the same individual; see
 #' \code{individual} in \code{\link{predict.emfrail}}
 #' @param ... Further arguments to be passed on to `ggplot` (ignored)
 #'
@@ -36,7 +37,8 @@ autoplot <- autoplot
 #' @seealso \code{\link{predict.emfrail}}, \code{\link{summary.emfrail}}, \code{\link{plot.emfrail}}.
 #'
 #' @examples
-#' mod_rec <- emfrail(Surv(start, stop, status) ~ treatment + number + cluster(id), bladder1)
+#' mod_rec <- emfrail(Surv(start, stop, status) ~ treatment + number + cluster(id), bladder1,
+#' control = emfrail_control(ca_test = FALSE, lik_ci = FALSE))
 #'
 #' # Histogram of the estimated frailties
 #' autoplot(mod_rec, type = "hist")
@@ -69,11 +71,16 @@ autoplot <- autoplot
 autoplot.emfrail <- function(object,
                              type = c("hist", "hr", "pred", "frail"),
                              newdata = NULL, lp = NULL,
+                             strata = NULL,
                              quantity = "cumhaz",
                              type_pred = c("conditional", "marginal"),
                              conf_int = "adjusted",
                              individual = FALSE,
                              ...) {
+
+
+  if(any(!(type %in% c("hist", "hr", "pred", "frail"))))
+    stop("type misspecified, check ?autoplot.emfrail")
 
   res <- vector("list", length(type))
   i <- 1
@@ -107,10 +114,10 @@ autoplot.emfrail <- function(object,
         }
 
 
-
     p <- predict.emfrail(object,
                          lp = lp,
                          newdata = newdata,
+                         strata = strata,
                          quantity = "cumhaz",
                          conf_int = NULL)
 
@@ -358,13 +365,13 @@ autoplot.emfrail <- function(object,
 
     plot1 <- frdat %>%
       ggplot(aes_string(x = seq_along(frdat$z), y = "z")) +
-      geom_point(aes_string(id = "id")) +
+      suppressWarnings(geom_point(aes_string(id = "id"))) +
       scale_x_continuous(labels = as.character(frdat$id), breaks = seq_along(frdat$z)) +
       xlab("cluster")
 
     if(sobj$est_dist$dist == "gamma")
       plot1 <- plot1 +
-      geom_errorbar(aes_string(ymin = "lower_q", ymax = "upper_q", id = "id"))
+      suppressWarnings(geom_errorbar(aes_string(ymin = "lower_q", ymax = "upper_q", id = "id")))
 
     res[[i]] <- plot1
   }

@@ -5,8 +5,9 @@
 \title{Plots for emfrail objects}
 \usage{
 \method{plot}{emfrail}(x, type = c("hist", "hr", "pred"), newdata = NULL,
-  lp = NULL, quantity = "cumhaz", type_pred = c("conditional",
-  "marginal"), conf_int = "adjusted", individual = FALSE, ...)
+  lp = NULL, strata = NULL, quantity = "cumhaz",
+  type_pred = c("conditional", "marginal"), conf_int = "adjusted",
+  individual = FALSE, ...)
 }
 \arguments{
 \item{x}{\code{emfrail} object, typically result of \code{emfrail()}}
@@ -22,6 +23,8 @@ for the first row of \code{newdata} is calculated.}
 \item{lp}{A numeric vector of values of the linear predictor, each corresponding to a case. For \code{type == "hr"} the hazard ratio
 between the first two values of \code{lp} is calculated. For \code{type == "pred"} the prediction
 for the first value of \code{lp} is calculated.}
+
+\item{strata}{The name of the strata (if applicable) for which the prediction should be made.}
 
 \item{quantity}{For \code{type == "pred"} the predicted quantity; see \code{quantity} in \code{\link{predict.emfrail}}}
 
@@ -41,7 +44,8 @@ Nothing
 Plots for emfrail objects
 }
 \examples{
-mod_rec <- emfrail(Surv(start, stop, status) ~ treatment + number + cluster(id), bladder1)
+mod_rec <- emfrail(Surv(start, stop, status) ~ treatment + number + cluster(id), bladder1,
+control = emfrail_control(ca_test = FALSE, lik_ci = FALSE))
 
 # Histogram of the estimated frailties
 plot(mod_rec, type = "hist")

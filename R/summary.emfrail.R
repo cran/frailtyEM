@@ -3,7 +3,7 @@
 #' @importFrom expint expint_En
 #' @param object An object of class \code{emfrail}
 #' @param lik_ci Logical. Should the confidence intervals for the frailty parameter be calculated based on the likelihood? If not, they are calculated with the delta method.
-#' @param print_opts A list with argumnets that are passed as attributes to the return object; these are used to determine what is printed when the object is accessed.
+#' @param print_opts A list with options for printing the summary object. These include \code{coef}, \code{dist}, \code{fit}, \code{frailty}, \code{adj_se}, \code{verbose_frailty}.
 #' @param ... Ignored
 #'
 #' @return An object of class \code{emfrail_summary},
@@ -25,6 +25,7 @@
 #' If the model contains covariates, the field \code{coefmat} contains the corresponding details.
 #'
 #' @export
+#' @method summary emfrail
 #'
 #' @seealso \code{\link{predict.emfrail}, \link{plot.emfrail}}
 #'
@@ -32,6 +33,7 @@
 #' data("bladder")
 #' mod_gamma <- emfrail(Surv(start, stop, status) ~ treatment + cluster(id), bladder1)
 #' summary(mod_gamma)
+#' summary(mod_gamma, print_opts = list(frailty_verbose = FALSE))
 #'
 #' # plot the Empirical Bayes estimates of the frailty
 #' # easy way:
@@ -86,7 +88,9 @@ summary.emfrail <- function(object,
                             print_opts = list(coef = TRUE,
                                               dist = TRUE,
                                               fit = TRUE,
-                                              frailty = TRUE),
+                                              frailty = TRUE,
+                                              adj_se = TRUE,
+                                              verbose_frailty = TRUE),
                             ...) {
 
   # Calculate the following: estimated distribution of the frailty at time 0
@@ -101,11 +105,13 @@ summary.emfrail <- function(object,
 
   # theta
   theta <- exp(object$logtheta)
-  se_theta <- msm::deltamethod(~exp(x1),
-                                mean = object$logtheta,
-                                cov = object$var_logtheta)
-
-
+  if(is.na(object$var_logtheta)) {
+    se_theta <- NA
+  } else {
+    se_theta <- msm::deltamethod(~exp(x1),
+                                 mean = object$logtheta,
+                                 cov = object$var_logtheta)
+  }
 
 
   if(!isTRUE(lik_ci) | !isTRUE(object$control$lik_ci)) {
@@ -114,7 +120,7 @@ summary.emfrail <- function(object,
     ci_theta_high <-  exp(object$logtheta + 1.96 * sqrt(object$var_logtheta))
 
     # if theta was at the edge, then CI should show this....
-    if(theta > object$control$inner_control$lower_tol - 0.1) {
+    if(theta > object$control$inner_control$upper_tol - 0.1) {
       ci_theta_low <- theta
       ci_theta_high <- Inf
     }
@@ -135,9 +141,11 @@ summary.emfrail <- function(object,
 
   if(est_dist$dist != "stable") {
     fr_var <- 1/theta
-    se_fr_var <- msm::deltamethod(~1/exp(x1),
-                                  mean = object$logtheta,
-                                  cov = object$var_logtheta)
+    if(is.na(object$var_logtheta))
+      se_fr_var <- NA else
+        se_fr_var <- msm::deltamethod(~1/exp(x1),
+                                      mean = object$logtheta,
+                                      cov = object$var_logtheta)
     ci_frvar_low <- 1/ci_theta_high
     ci_frvar_high <- 1/ci_theta_low
   }
@@ -297,9 +305,10 @@ summary.emfrail <- function(object,
     if(est_dist$pvfm < 0) {
       pvfm <- est_dist$pvfm
 
-      tau_pvf <- list(tau = (1 + pvfm) - 2 * (pvfm + 1) * theta +
+
+      tau_pvf <- list(tau = suppressWarnings((1 + pvfm) - 2 * (pvfm + 1) * theta +
         4 * (pvfm + 1)^2 * theta^2 / (- pvfm) * exp(2 * (pvfm + 1) * theta / (- pvfm)) *
-        expint::expint_En(2 * (pvfm + 1) * theta / (-pvfm), order = 1 / (- pvfm) - 1),
+        expint::expint_En(2 * (pvfm + 1) * theta / (-pvfm), order = 1 / (- pvfm) - 1)),
 
          # se_tau = with(object$outer_m,
          #               msm::deltamethod(~ (1 + pvfm) - 2 * (pvfm + 1) * exp(x1) +
@@ -319,6 +328,9 @@ summary.emfrail <- function(object,
           expint::expint_En(2 * (pvfm + 1) * ci_theta_low / (-pvfm), order = 1 / (- pvfm) - 1)
 
       )
+
+      # this may happen in the limiting case of theta very large (i.e. no dependence)
+      if(is.nan(tau_pvf$tau)) tau_pvf$tau <- 0
 
 
       kappa_pvf <- list(kappa = 4 * exp(
@@ -370,6 +382,7 @@ summary.emfrail <- function(object,
     z$upper_q <- as.numeric(gamma_pars$upper_q)
   }
 
+
   if(length(object$coef) > 0) {
     coefmat <- list(
       coef = object$coef,
@@ -377,7 +390,14 @@ summary.emfrail <- function(object,
       "se(coef)" = sqrt(diag(object$var)[seq_along(object$coef)]),
       "adjusted se" = sqrt(diag(object$var_adj)[seq_along(object$coef)] ))
 
-    coefmat$z <- coefmat$coef / coefmat$`se(coef)`
+    if(all(is.na(object$var_adj))) {
+      coefmat$`adjusted se` <- NULL
+      coefmat$z <- coefmat$coef / coefmat$`se(coef)`} else
+        coefmat$z <- coefmat$coef / coefmat$`adjusted se`
+
+
+
+
     coefmat$p <-  1 - pchisq(coefmat$z^2, df = 1)
 
     coefmat <- do.call(cbind, coefmat)
@@ -405,6 +425,7 @@ summary.emfrail <- function(object,
        coefmat = coefmat,
        frail = z
        )
+
 
   #attr(ret, "class") <- "emfrail_summary"
   attr(ret, "print_opts") <-  print_opts

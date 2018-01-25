@@ -5,11 +5,9 @@
 #' @param se Logical. Whether to calculate the variance / covariance matrix.
 #' @param se_adj Logical. Whether to calculate the adjusted variance / covariance matrix (needs \code{se == TRUE})
 #' @param ca_test Logical. Should the Commenges-Andersen test be calculated?
-#' @param only_ca_test Logical. Should ONLY the Commenges-Andersen test be calculated?
 #' @param lik_ci Logical. Should likelihood-based confidence interval be calculated for the frailty parameter?
-#' @param lik_ci_intervals This list should contain two length 2 vectors \code{interval} and \code{interval_stable} that are used in calculating likelihood-based
-#' confidence intervals. These are the edges, on the scale of \eqn{\theta}, of the parameter space where to look for the
-#' ends of these confidence intervals.
+#' @param lik_interval The edges, on the scale of \eqn{\theta}, of the parameter space in which to search for likelihood-based confidence interval
+#' @param lik_interval_stable (for dist = "stable") The edges, on the scale of \eqn{\theta}, of the parameter space in which to search for likelihood-based confidence interval
 #' @param nlm_control A list of named arguments to be sent to \code{nlm} for the outer optimization.
 #' @param inner_control A list of parameters for the inner optimization. See details.
 #'
@@ -25,8 +23,8 @@
 #' \item{\code{maxit}}{ The maximum number of iterations between the E step and the M step}
 #' \item{\code{fast_fit}}{ Logical, whether the closed form formulas should be used for the E step when available}
 #' \item{\code{verbose}}{ Logical, whether details of the optimization should be printed}
-#' \item{\code{lower_tol}}{ A "lower" bound for \eqn{\theta}; after this treshold, the algorithm returns the limiting log-likelihood of the no-frailty model. For example,
-#' a value of 20 means that the maximum likelihood for \eqn{\theta} will be \eqn{\exp(20)}. For a frailty variance, this is approx \eqn{2 \times 10^{-9}}}
+#' \item{\code{upper_tol}}{ An upper bound for \eqn{\theta}; after this treshold, the algorithm returns the limiting log-likelihood of the no-frailty model.
+#' That is because the no-frailty scenario corresponds to a \eqn{\theta = \infty}, which could lead to some numerical issues}
 #' \item{\code{lik_tol}}{ For values higher than this, the algorithm returns a warning when the log-likelihood decreases between EM steps. Technically, this should not happen, but
 #' if the parameter \eqn{\theta} is somewhere really far from the maximum, numerical problems might lead in very small likelihood decreases.
 #' }}
@@ -47,32 +45,28 @@ emfrail_control <- function(opt_fit = TRUE,
                             se = TRUE,
                             se_adj = TRUE,
                             ca_test = TRUE,
-                            only_ca_test = FALSE,
                             lik_ci = TRUE,
-                            lik_ci_intervals = list(interval = c(-3, 20),
-                                                    interval_stable = c(0, 20)),
+                            lik_interval = exp(c(-3, 20)),
+                            lik_interval_stable = exp(c(0, 20)),
                             nlm_control = list(stepmax = 1),
                             inner_control = list(eps = 0.0001,
                                                  maxit = Inf,
                                                  fast_fit = TRUE,
                                                  verbose = FALSE,
-                                                 lower_tol = 20,
+                                                 upper_tol = exp(10),
                                                  lik_tol = 1)
 ) {
   # calculate SE as well
 
   # Here some checks
 
-  if(isTRUE(only_ca_test) & !isTRUE(ca_test))
-    stop("control: if only_ca_test is TRUE then ca_test must be TRUE as well")
-
   if(isTRUE(lik_ci)) {
-    if(is.null(lik_ci_intervals))
-      stop("opt_control must be a list which contains a named element interval")
-    if(length(lik_ci_intervals$interval) != 2)
-      stop("interval must be of length 2")
-    if(lik_ci_intervals$interval[1] < -7 | lik_ci_intervals$interval[2] > 20)
-      warning("extreme values for interval, there might be some numerical trouble")
+    if(length(lik_interval) != 2 | length(lik_interval_stable) != 2)
+      stop("lik_interval must be of length 2")
+    if(lik_interval[1] < exp(-7) | lik_interval[2] > exp(20))
+      warning("extreme values for lik_interval, there might be some numerical trouble")
+    # if(lik_ci_intervals$interval[2] != inner_control$upper_tol)
+     # message("it is good practice right hand side of the interval should be equal to upper_tol")
   }
 
   # make sure the defaults of these function are the same as those from the input!
@@ -80,13 +74,13 @@ emfrail_control <- function(opt_fit = TRUE,
                       maxit = Inf,
                       fast_fit = TRUE,
                       verbose = FALSE,
-                      lower_tol = 20,
+                      upper_tol = exp(20),
                       lik_tol = 1) {
     list(eps = eps,
          maxit = maxit,
          fast_fit = fast_fit,
          verbose = verbose,
-         lower_tol = lower_tol,
+         upper_tol = upper_tol,
          lik_tol = lik_tol)
   }
 
@@ -96,9 +90,9 @@ emfrail_control <- function(opt_fit = TRUE,
               se = se,
               se_adj = se_adj,
               ca_test = ca_test,
-              only_ca_test = only_ca_test,
               lik_ci = lik_ci,
-              lik_ci_intervals = lik_ci_intervals,
+              lik_interval = lik_interval,
+              lik_interval_stable = lik_interval_stable,
               nlm_control = nlm_control,
               inner_control = inner_control)
   attr(res, "class") <- c("emfrail_control")

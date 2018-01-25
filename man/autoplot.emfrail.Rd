@@ -8,7 +8,7 @@
 autoplot(object, ...)
 
 \method{autoplot}{emfrail}(object, type = c("hist", "hr", "pred", "frail"),
-  newdata = NULL, lp = NULL, quantity = "cumhaz",
+  newdata = NULL, lp = NULL, strata = NULL, quantity = "cumhaz",
   type_pred = c("conditional", "marginal"), conf_int = "adjusted",
   individual = FALSE, ...)
 }
@@ -30,13 +30,15 @@ for the first row of \code{newdata} is calculated.}
 between the first two values of \code{lp} is calculated. For \code{type == "pred"} the prediction
 for the first value of \code{lp} is calculated.}
 
-\item{quantity}{For \code{type == "pred"} the predicted quantity; see \code{quantity} in \code{\link{predict.emfrail}}}
+\item{strata}{The name of the strata (if applicable) for which the prediction should be made.}
 
-\item{type_pred}{For \code{type == "pred"} the type of predicted quantity; see \code{type} in \code{\link{predict.emfrail}}}
+\item{quantity}{One of \code{c("cumhaz", "survival")} for \code{type == "pred"}; see \code{quantity} in \code{\link{predict.emfrail}}}
 
-\item{conf_int}{For \code{type == "pred"} the type of confidence intervals; see \code{conf_int} in \code{\link{predict.emfrail}}}
+\item{type_pred}{One of \code{c("conditional", "marginal")} for \code{type == "pred"}; see \code{type} in \code{\link{predict.emfrail}}}
 
-\item{individual}{For \code{type == "pred"} for drawing a curve when the rows of \code{newdata} refer to the same individual; see
+\item{conf_int}{One of \code{c("regular", "adjusted")} for \code{type == "pred"}; see \code{conf_int} in \code{\link{predict.emfrail}}}
+
+\item{individual}{Logical, for \code{type == "pred"} to be used for drawing a curve when the rows of \code{newdata} refer to the same individual; see
 \code{individual} in \code{\link{predict.emfrail}}}
 }
 \value{
@@ -52,7 +54,8 @@ practical purpose this will not make a difference (you can safely ignore the war
 easier to create an interactive plot out of the resulting object.
 }
 \examples{
-mod_rec <- emfrail(Surv(start, stop, status) ~ treatment + number + cluster(id), bladder1)
+mod_rec <- emfrail(Surv(start, stop, status) ~ treatment + number + cluster(id), bladder1,
+control = emfrail_control(ca_test = FALSE, lik_ci = FALSE))
 
 # Histogram of the estimated frailties
 autoplot(mod_rec, type = "hist")

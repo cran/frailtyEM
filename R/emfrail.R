@@ -1,18 +1,19 @@
-#' Fitting shared frailty models with the EM algorithm
+#' Fitting semi-parametric shared frailty models with the EM algorithm
 #'
 #' @importFrom survival Surv
 #' @importFrom stats approx coef model.frame model.matrix pchisq printCoefmat nlm uniroot cor
 #' @importFrom magrittr "%>%"
 #' @importFrom Rcpp evalCpp
+#' @importFrom Matrix bdiag
 #' @useDynLib frailtyEM, .registration=TRUE
 #' @include em_fit.R
 #' @include emfrail_aux.R
 #'
 #' @param formula A formula that contains on the left hand side an object of the type \code{Surv}
-#' and on the right hand side a \code{+cluster(id)} statement. Optionally, also a \code{+terminal()} statement
-#' may be added, and then a score test for association between the event process and the result in the specified
-#' column is performed. See details.
-#' @param data A data frame in which the formula argument can be evaluated
+#' and on the right hand side a \code{+cluster(id)} statement. Two special statments may also be used:
+#' \code{+strata()} for specifying a grouping column that will represent different strata and
+#' \code{+terminal()}
+#' @param data A \code{data.frame} in which the formula argument can be evaluated
 #' @param distribution An object as created by \code{\link{emfrail_dist}}
 #' @param control An object as created by \code{\link{emfrail_control}}
 #' @param model Logical. Should the model frame be returned?
@@ -22,42 +23,30 @@
 #'
 #' @details The \code{emfrail} function fits shared frailty models for processes which have intensity
 #' \deqn{\lambda(t) = z \lambda_0(t) \exp(\beta' \mathbf{x})}
-#' with a non-parametric (Breslow) baseline intensity \eqn{\lambda_0(t)}.
-#' The distribution of \eqn{z} is usually described by one parameter \eqn{\theta}.
-#' The family of supported distributions can be one of gamma, positive stable or PVF (power-variance-family).
-#' For details, see the vignette and \code{\link{emfrail_dist}} .
+#' with a non-parametric (Breslow) baseline intensity \eqn{\lambda_0(t)}. The outcome
+#' (left hand side of the \code{formula}) must be a \code{Surv} object.
 #'
-#' The algorithm is described in detail in the vignette. The short version is as follows:
-#' The objective is to maximize a marginal likelihood with respect to 3 sets of parameters, \eqn{\theta > 0}
-#' (the parameter of the frailty distribution), \eqn{\beta} (a vector of regression coefficients) and \eqn{\lambda_0}
-#' (a vector of "jumps" of the cumulative hazards at each event time point).
-#' The essence of the algorithm relies on the observation that, if \eqn{\theta} would be fixed, then the maximization
-#' with respect to \eqn{\beta, \theta} can be done with an EM algorithm. This procedure has been described, for the
-#' gamma frailty, in Nielsen (1992).
-#' The "inner" problem is, for a fixed of \eqn{\theta}, to calculate
-#'\deqn{\widehat{L}(\theta) = \mathrm{max}_{\beta, \lambda_0} L(\beta, \lambda_0 | \theta).}
-#' which is done via an EM algorithm. The "outer" problem is to calculate
-#' \deqn{\widehat{L} = \mathrm{max}_{\theta} \widehat{L}(\theta).}
+#' If the object is \code{Surv(tstop, status)} then the usual failure time data is represented.
+#' Gap-times between recurrent events are represented in the same way.
+#' If the left hand side of the formula is created as \code{Surv(tstart, tstop, status)}, this may represent a number of things:
+#' (a) recurrent events episodes in calendar time where a recurrent event episode starts at \code{tstart} and ends at \code{tstop}
+#' (b) failure time data with time-dependent covariates where \code{tstop} is the time of a change in covariates or censoring
+#' (\code{status = 0}) or an event time (\code{status = 1}) or (c) clustered failure time with left truncation, where
+#' \code{tstart} is the individual's left truncation time. Unlike regular Cox models, a major distinction is that in case (c) the
+#' distribution of the frailty must be considered conditional on survival up to the left truncation time.
 #'
-#' The "inner" problem is solved relying on \code{agreg.fit} from the \code{survival} package in the M step
-#' and with an E step which is done in \code{R} when there are closed form solutions and in \code{C++} when the
-#' solutions are calculated with a recursive algorithm. The information matrix (given fixed \eqn{\theta}) is calculated using Louis' formula.
-#' The "outer" problem is solved relying on the maximizers in the \code{nlm} function, which also provides an estimate
-#' of the Hessian matrix. The remaining elements of the information matrix are approximated numerically.
+#' The \code{+cluster()} statement specified the column that determines the grouping (the observations that share the same frailty).
+#' The \code{+strata()} statement specifies a column that determines different strata, for which different baseline hazards are calculated.
+#' The \code{+terminal} specifies a column that contains an indicator for dependent censoring, and then performs a score test
 #'
-#' Several options are available to the user. In the \code{distribution} argument, the frailty distribution and the
-#' starting value for \eqn{\theta} can be specified, as well as whether the data consists of left truncated
-#' survival times or not (the default). In the \code{control} argument, several parameters control the maximization.
-#' The convergence criterion for the EM can be specified (or a maximum number of iterations). The "outer" procedure can be
-#' avoided altogether and then \code{emfrail} calculates only \eqn{\widehat{L}(\theta)} at the given starting value.
+#' The \code{distribution} argument must be generated by a call to \code{\link{emfrail_dist}}. This determines the
+#' frailty distribution, which may be one of gamma, positive stable or PVF (power-variance-function), and the starting
+#' value for the maximum likelihood estimation. The PVF family
+#' also includes a tuning parameter that differentiates between inverse Gaussian and compound Poisson distributions.
 #'
-#' The Commenges-Andersen test is a score test for heterogeneity which test the null hypothesis that all
-#' frailties are equal to 1. This only uses the information from the initial proportional hazards model
-#' without frailty.
-#'
-#' The score test for dependent censoring test is detailed in Balan et al (2016). If significant, it may indicate
-#' that dependent censoring is present. A common scenario is when recurrent events are stopped by a terminal event.
-#'
+#' The \code{control} argument must be generated by a call to \code{\link{emfrail_control}}. Several parameters
+#' may be adjusted that control the precision of the convergenge criteria or supress the calculation of different
+#' quantities.
 #'
 #' @return An object of class \code{emfrail} that contains the following fields:
 #' \item{coefficients}{A named vector of the estimated regression coefficients}
@@ -88,10 +77,12 @@
 #' \item{mm}{The \code{model.matrix}, if \code{model.matrix = TRUE}}
 #'
 #' @md
-#' @note Some possible problems may appear when the maximum likelihood estimate lies on the border of the parameter space.
-#' Usually, this will happen when the "outer" parameter MLE is infinity (i.e. variance 0 in case of gamma and PVF).
-#' For small enough values of \eqn{1/\theta} the log-likelihood
-#' of the Cox model is returned to avoid such problems. This option can be tweaked in \code{emfrail_control()}.
+#' @note Several options in the \code{control} arguemnt shorten the running time for \code{emfrail} significantly.
+#' These are disabling the adjustemnt of the standard errors (\code{se_adj = FALSE}), disabling the likelihood-based confidence intervals (\code{lik_ci = FALSE}) or
+#' disabling the score test for heterogeneity (\code{ca_test = FALSE}).
+#'
+#' The algorithm is detailed in the package vignette. For the gamma frailty,
+#' the results should be identical with those from \code{coxph} with \code{ties = "breslow"}.
 #'
 #' @seealso \code{\link{plot.emfrail}} and \code{\link{autoplot.emfrail}} for plot functions directly available, \code{\link{emfrail_pll}} for calculating \eqn{\widehat{L}(\theta)} at specific values of \eqn{\theta},
 #' \code{\link{summary.emfrail}} for transforming the \code{emfrail} object into a more human-readable format and for
@@ -101,38 +92,30 @@
 #' the log-likelihood of the fitted model.
 #'
 #' @examples
-#' dat <- survival::rats
 #'
+#' m_gamma <- emfrail(formula = Surv(time, status) ~  rx + sex + cluster(litter),
+#'                    data =  rats)
 #'
-#' m1 <- emfrail(formula = Surv(time, status) ~  rx + sex + cluster(litter),
-#' data =  dat)
-#' m1
-#' summary(m1)
-#' \dontrun{
-#' # for the Inverse Gaussian distribution
-#' m2 <- emfrail(formula = Surv(time, status) ~  rx + sex + cluster(litter),
-#'              data =  dat,
-#'              distribution = emfrail_dist(dist = "pvf"))
-#' m2
+#' # Inverse Gaussian distribution
+#' m_ig <- emfrail(formula = Surv(time, status) ~  rx + sex + cluster(litter),
+#'                 data =  rats,
+#'                 distribution = emfrail_dist(dist = "pvf"))
 #'
 #' # for the PVF distribution with m = 0.75
-#' m3 <- emfrail(formula = Surv(time, status) ~  rx + sex + cluster(litter),
-#'               data =  dat,
-#'               distribution = emfrail_dist(dist = "pvf", pvfm = 0.75))
-#' m3
+#' m_pvf <- emfrail(formula = Surv(time, status) ~  rx + sex + cluster(litter),
+#'                  data =  rats,
+#'                  distribution = emfrail_dist(dist = "pvf", pvfm = 0.75))
 #'
 #' # for the positive stable distribution
-#' m4 <- emfrail(formula = Surv(time, status) ~  rx + sex + cluster(litter),
-#'               data =  dat,
-#'               distribution = emfrail_dist(dist = "stable"))
-#' m4
-#'}
-#' # Compare marginal log-likelihoods
+#' m_ps <- emfrail(formula = Surv(time, status) ~  rx + sex + cluster(litter),
+#'                 data =  rats,
+#'                 distribution = emfrail_dist(dist = "stable"))
 #' \dontrun{
-#' models <- list(m1, m2, m3, m4)
+#' # Compare marginal log-likelihoods
+#' models <- list(m_gamma, m_ig, m_pvf, m_ps)
 #'
-#' logliks <- lapply(models,
-#'                   function(x) -x$outer_m$value)
+#' models
+#' logliks <- lapply(models, logLik)
 #'
 #' names(logliks) <- lapply(models,
 #'                          function(x) with(x$distribution,
@@ -143,154 +126,80 @@
 #'
 #' logliks
 #' }
+#'
+#' # Stratified analysis
+#' \dontrun{
+#'   m_strat <- emfrail(formula = Surv(time, status) ~  rx + strata(sex) + cluster(litter),
+#'                      data =  rats)
+#' }
+#'
+#'
 #' # Draw the profile log-likelihood
 #' \dontrun{
-#' fr_var <- seq(from = 0.01, to = 1.4, length.out = 20)
+#'   fr_var <- seq(from = 0.01, to = 1.4, length.out = 20)
 #'
-#' # For gamma the variance is 1/theta (see parametrizations)
-#' pll_gamma <- emfrail_pll(formula = Surv(time, status) ~  rx + sex + cluster(litter),
-#'                          data =  dat,
-#'                          values = 1/fr_var )
-#'  plot(fr_var, pll_gamma,
-#'      type = "l",
-#'      xlab = "Frailty variance",
-#'      ylab = "Profile log-likelihood")
+#'   # For gamma the variance is 1/theta (see parametrizations)
+#'   pll_gamma <- emfrail_pll(formula = Surv(time, status) ~  rx + sex + cluster(litter),
+#'                            data =  rats,
+#'                            values = 1/fr_var )
+#'   plot(fr_var, pll_gamma,
+#'        type = "l",
+#'        xlab = "Frailty variance",
+#'        ylab = "Profile log-likelihood")
+#'
+#'
+#'   # Recurrent events
+#'   mod_rec <- emfrail(Surv(start, stop, status) ~ treatment + cluster(id), bladder1)
+#'   # The warnings appear from the Surv object, they also appear in coxph.
+#'
+#'   plot(mod_rec, type = "hist")
 #' }
-#' \dontrun{
-#' # The same can be done with coxph, where variance is refered to as "theta"
-#' pll_cph <- sapply(fr_var, function(fr)
-#'   coxph(data =  dat, formula = Surv(time, status) ~ rx + sex + frailty(litter, theta = fr),
-#'         method = "breslow")$history[[1]][[3]])
-#'
-#' # Same for inverse gaussian
-#' pll_if <- emfrail_pll(data =  dat,
-#'                       formula = Surv(time, status) ~  rx + sex + cluster(litter),
-#'                       distribution = emfrail_dist(dist = "pvf"),
-#'                       .values = 1/fr_var )
-#'
-#' # Same for pvf with a psoitive pvfm parameter
-#' pll_pvf <- emfrail_pll(data =  dat,
-#'                        formula = Surv(time, status) ~  rx + sex + cluster(litter),
-#'                        distribution = emfrail_dist(dist = "pvf", pvfm = 1.5),
-#'                        .values = 1/fr_var )
-#'
-#' miny <- min(c(pll_gamma, pll_cph, pll_if, pll_pvf))
-#' maxy <- max(c(pll_gamma, pll_cph, pll_if, pll_pvf))
-#'
-#' plot(fr_var, pll_gamma,
-#'      type = "l",
-#'      xlab = "Frailty variance",
-#'      ylab = "Profile log-likelihood",
-#'      ylim = c(miny, maxy))
-#' points(fr_var, pll_cph, col = 2)
-#' lines(fr_var, pll_if, col = 3)
-#' lines(fr_var, pll_pvf, col = 4)
-#'
-#' legend(legend = c("gamma (emfrail)", "gamma (coxph)", "inverse gaussian", "pvf, m=1.5"),
-#'        col = 1:4,
-#'        lty = 1,
-#'        x = 0,
-#'        y = (maxy + miny)/2)
-#' }
-#' # Recurrent events
-#' mod_rec <- emfrail(Surv(start, stop, status) ~ treatment + cluster(id), bladder1)
-#' # The warnings appear from the Surv object, they also appear in coxph.
-#'
-#' summary(mod_rec)
-#'
-#' # Create a histogram of the estimated frailties
-#'
-#' plot(mod_rec, type = "hist")
-#'
-#' # or, with ggplot:
-#' \dontrun{
-#' library(ggplot2)
-#' sum_mod_rec <- summary(mod_rec)
-#'
-#' ggplot(sum_mod_rec$frail, aes(x = z)) +
-#'   geom_histogram() +
-#'   ggtitle("Estimated frailties")
-#'
-#' # Plot the frailty estimates with quantiles of the estimated distribution
-#' ggplot(sum_mod_rec$frail, aes(x = id, y = z)) +
-#'   geom_point() +
-#'   ggtitle("Estimated frailties") +
-#'   geom_errorbar(aes(ymin = lower_q, ymax = upper_q))
-#'
-#' # We can do the same plot but with the ordered frailties:
-#' ord <- order(sum_mod_rec$frail$z)
-#' # we need new x coordinates for that:
-#' ordering <- 1:length(ord)
-#'
-#' ggplot(sum_mod_rec$frail[ord,], aes(x = ordering, y = z)) +
-#'   geom_point() +
-#'   ggtitle("Estimated frailties") +
-#'   geom_errorbar(aes(ymin = lower_q, ymax = upper_q))
-#'
-#' # How do we know which id is which one now?
-#' # We can make an interactive plot with ggplotly
-#' # To add text to elements we add id in aes()
-#'
-#' library(plotly)
-#' ggplotly(
-#'   ggplot(sum_mod_rec$frail[ord,], aes(x = ordering, y = z)) +
-#'     geom_point(aes(id = id)) +
-#'     ggtitle("Estimated frailties") +
-#'     geom_errorbar(aes(ymin = lower_q, ymax = upper_q, id = id))
-#' )
-#'}
-#'
-#' # Plot marginal and conditional curves
-#' # For recurrent events, the survival is not very meaningful
-#'
-#' plot(mod_rec, type = "pred", lp = 0, quantity = "cumhaz")
-#' #The strong frailty "drags down" the intensity
-#'
-#'
 #'
 #' # Left truncation
-#'
-#' # N.B. This code takes a longer time to run
-#'
 #' \dontrun{
-#' # We simulate some data with truncation times
-#' set.seed(1)
-#' x <- sample(c(0,1), 5 * 300, TRUE)
-#' u <- rep(rgamma(300,1,1), each = 5)
-#' stime <- rexp(5*300, rate = u * exp(0.5 * x))
-#' status <- ifelse(stime > 5, 0, 1)
-#' stime[status] <- 5
+#'   # We simulate some data with truncation times
+#'   set.seed(2018)
+#'   nclus <- 300
+#'   nind <- 5
+#'   x <- sample(c(0,1), nind * nclus, TRUE)
+#'   u <- rep(rgamma(nclus,1,1), each = 3)
 #'
-#' ltime <- runif(5 * 300, min = 0, max = 2)
-#' d <- data.frame(id = rep(1:300, each = 5),
-#'                 x = x,
-#'                 stime = stime,
-#'                 u = u,
-#'                 ltime = ltime,
-#'                 status = 1)
-#' d_left <- d[d$stime > d$ltime,]
+#'   stime <- rexp(nind * nclus, rate = u * exp(0.5 * x))
 #'
-#' # The worst thing that can be done is to
-#' # Ignore the left truncation:
-#' mod_1 <- emfrail(Surv(stime, status)~ x + cluster(id), d_left)
+#'   status <- ifelse(stime > 5, 0, 1)
+#'   stime[status == 0] <- 5
 #'
-#' # The so-and-so thing is to consider the delayed entry time,
-#' # But do not "update" the frailty distribution accordingly
-#' mod_2 <- emfrail(Surv(ltime, stime, status)~ x + cluster(id), d_left)
+#'   # truncate uniform between 0 and 2
+#'   ltime <- runif(nind * nclus, min = 0, max = 2)
 #'
-#' # This is identical with
-#' mod_cox <- coxph(Surv(ltime, stime, status)~ x + frailty(id), data = d_left)
+#'   d <- data.frame(id = rep(1:nclus, each = nind),
+#'                   x = x,
+#'                   stime = stime,
+#'                   u = u,
+#'                   ltime = ltime,
+#'                   status = status)
+#'   d_left <- d[d$stime > d$ltime,]
+#'
+#'   mod <- emfrail(Surv(stime, status)~ x + cluster(id), d)
+#'   # This model ignores the left truncation, 0.378 frailty variance:
+#'   mod_1 <- emfrail(Surv(stime, status)~ x + cluster(id), d_left)
+#'
+#'   # This model takes left truncation into account,
+#'  # but it considers the distribution of the frailty unconditional on the truncation
+#'  mod_2 <- emfrail(Surv(ltime, stime, status)~ x + cluster(id), d_left)
+#'
+#'   # This is identical with:
+#'   mod_cox <- coxph(Surv(ltime, stime, status)~ x + frailty(id), data = d_left)
 #'
 #'
-#' # The correct thing is to update the frailty.
-#' mod_3 <- emfrail(Surv(ltime, stime, status)~ x + cluster(id), d_left,
-#'                  distribution = emfrail_dist(left_truncation = TRUE))
+#'   # The correct thing is to consider the distribution of the frailty given the truncation
+#'   mod_3 <- emfrail(Surv(ltime, stime, status)~ x + cluster(id), d_left,
+#'                    distribution = emfrail_dist(left_truncation = TRUE))
 #'
-#' summary(mod_1)
-#' summary(mod_2)
-#' summary(mod_3)
+#'   summary(mod_1)
+#'   summary(mod_2)
+#'   summary(mod_3)
 #' }
-
 emfrail <- function(formula,
                     data,
                     distribution = emfrail_dist(),
@@ -339,6 +248,7 @@ emfrail <- function(formula,
 
   cluster <- function(x) x
   terminal <- function(x) x
+  strata <- function(x) x
 
   mf <- model.frame(formula, data)
 
@@ -351,32 +261,41 @@ emfrail <- function(formula,
   pos_terminal <- grep("terminal", names(mf))
   if(length(pos_terminal) > 1) stop("misspecified terminal()")
 
+  pos_strata <- grep("strata", names(mf))
+  if(length(pos_strata) > 0) {
+    if(length(pos_strata) > 1) stop("only one strata() variable allowed")
+    strats <- as.numeric(mf[[pos_strata]])
+    label_strats <- levels(mf[[pos_strata]])
+  } else {
+    # else, everyone is in the same strata
+    strats <- NULL
+    label_strats <- "1"
+  }
+
+
   Y <- mf[[1]]
   if(!inherits(Y, "Surv")) stop("left hand side not a survival object")
   if(ncol(Y) != 3) {
-    # warning("Y not in (tstart, tstop) format; taking tstart = 0")
-    # Y <- cbind(rep(0, nrow(Y)), Y)
-    # attr(Y, "dimnames") <- list(NULL, c("start", "stop", "status"))
-    # attr(Y, "type") <- "counting"
+    # making it all in (tstart, tstop) format
     Y <- Surv(rep(0, nrow(Y)), Y[,1], Y[,2])
   }
-  if(attr(Y, "type") != "counting") stop("use Surv(tstart, tstop, status)")
 
 
-  # get the model matrix
   X1 <- model.matrix(formula, data)
-  # this is necessary because when factors have more levels, pos_cluster doesn't correspond any more
+
   pos_cluster_X1 <- grep("cluster", colnames(X1))
   pos_terminal_X1 <- grep("terminal", colnames(X1))
-  X <- X1[,-c(1, pos_cluster_X1, pos_terminal_X1), drop=FALSE]
+  pos_strata_X1 <- grep("strata", colnames(X1))
+
+  X <- X1[,-c(1, pos_cluster_X1, pos_terminal_X1, pos_strata_X1), drop=FALSE]
   # note: X has no attributes, in coxph it does.
 
-  # some stuff for creating the C vector, is used all along.
   # mcox also works with empty matrices, but also with NULL as x.
-  mcox <- survival::agreg.fit(x = X, y = Y, strata = NULL, offset = NULL, init = NULL,
+
+  mcox <- survival::agreg.fit(x = X, y = Y, strata = strats, offset = NULL, init = NULL,
                               control = survival::coxph.control(),
                               weights = NULL, method = "breslow", rownames = NULL)
-
+  # order(strat, -Y[,2])
   # the "baseline" case // this will stay constant
 
   if(length(X) == 0) {
@@ -384,10 +303,9 @@ emfrail <- function(formula,
     exp_g_x <- matrix(rep(1, length(mcox$linear.predictors)), nrow = 1)
     g <- 0
     g_x <- t(matrix(rep(0, length(mcox$linear.predictors)), nrow = 1))
-
   } else {
     x2 <- matrix(rep(0, ncol(X)), nrow = 1, dimnames = list(123, dimnames(X)[[2]]))
-    x2 <- (scale(x2, center = mcox$means, scale = FALSE))
+    x2 <- scale(x2, center = mcox$means, scale = FALSE)
     newrisk <- exp(c(x2 %*% mcox$coefficients) + 0)
     exp_g_x <- exp(mcox$coefficients %*% t(X))
     g <- mcox$coefficients
@@ -402,90 +320,240 @@ emfrail <- function(formula,
   # and then we don't have to keep on doing this
   order_id <- match(id, unique(id))
 
-  nev_id <- as.numeric(rowsum(Y[,3], order_id, reorder = FALSE)) # nevent per id or am I going crazy
+  nev_id <- as.numeric(rowsum(Y[,3], order_id, reorder = FALSE)) # nevent per cluster
   names(nev_id) <- unique(id)
 
-  # Idea: nrisk has the sum of elp who leave later at every tstop
+  # nrisk has the sum with every tstop and the sum of elp at risk at that tstop
   # esum has the sum of elp who enter at every tstart
   # indx groups which esum is right after each nrisk;
   # the difference between the two is the sum of elp really at risk at that time point.
 
+  if(!is.null(strats)) {
 
-  nrisk <- rev(cumsum(rev(rowsum(explp, Y[, ncol(Y) - 1]))))
-  esum <- rev(cumsum(rev(rowsum(explp, Y[, 1]))))
+    explp_str <- split(explp, strats)
+    tstop_str <- split(Y[,2], strats)
+    tstart_str <- split(Y[,1], strats)
 
-  # the stuff that won't change
-  death <- (Y[, ncol(Y)] == 1)
-  nevent <- as.vector(rowsum(1 * death, Y[, ncol(Y) - 1])) # per time point
-  time <- sort(unique(Y[,2])) # unique tstops
+    ord_tstop_str <- lapply(tstop_str, function(x) match(x, sort(unique(x))))
+    ord_tstart_str <- lapply(tstart_str, function(x) match(x, sort(unique(x))))
 
-  # this gives the next entry time for each unique tstop (not only event)
-  etime <- c(0, sort(unique(Y[, 1])),  max(Y[, 1]) + min(diff(time)))
-  indx <- findInterval(time, etime, left.open = TRUE) # left.open  = TRUE is very important
+    nrisk <- mapply(FUN = function(explp, y) rowsum_vec(explp, y, max(y)),
+                                       explp_str,
+                                       ord_tstop_str,
+                                       SIMPLIFY = FALSE)
 
-  # this gives for every tstart (line variable), after which event time did it come
-  # indx2 <- findInterval(Y[,1], time, left.open = FALSE, rightmost.closed = TRUE)
-  indx2 <- findInterval(Y[,1], time)
-
-  time_to_stop <- match(Y[,2], time)
-
-  atrisk <- list(death = death, nevent = nevent, nev_id = nev_id,
-                 order_id = order_id, time = time, indx = indx, indx2 = indx2,
-                 time_to_stop = time_to_stop)
-
-  nrisk <- nrisk - c(esum, 0,0)[indx]
-
-  haz <- nevent/nrisk * newrisk
+    # nrisk <- mapply(FUN = function(explp, y) rev(cumsum(rev(rowsum(explp, y[,2])))),
+    #                 split(explp, strats),
+    #                 split.data.frame(Y, strats),
+    #                 SIMPLIFY = FALSE)
 
 
-  basehaz_line <- haz[atrisk$time_to_stop]
+    esum <- mapply(FUN = function(explp, y) rowsum_vec(explp, y, max(y)),
+                    explp_str,
+                    ord_tstart_str,
+                    SIMPLIFY = FALSE)
 
-  cumhaz <- cumsum(haz)
+    # esum <-  mapply(FUN = function(explp, y) rev(cumsum(rev(rowsum(explp, y[,1])))),
+    #                 split(explp, strats),
+    #                 split.data.frame(Y, strats),
+    #                 SIMPLIFY = FALSE)
 
-  cumhaz_0_line <- cumhaz[atrisk$time_to_stop]
-  cumhaz_tstart <- c(0, cumhaz)[atrisk$indx2 + 1]
-  cumhaz_line <- (cumhaz_0_line - cumhaz_tstart)  * explp / newrisk
+    death <- lapply(
+      X = split.default(Y[,3], strats),
+      FUN = function(y) (y == 1)
+    )
 
-  Cvec <- rowsum(cumhaz_line, atrisk$order_id, reorder = FALSE)
+    nevent <- mapply(
+      FUN = function(y, d)
+        as.vector(rowsum(1 * d, y)),
+      tstop_str,
+      death,
+      SIMPLIFY = FALSE
+    )
+
+    time_str <- lapply(
+      X = tstop_str,
+      FUN = function(y) sort(unique(y))
+    )
+
+    delta <- min(diff(sort(unique(Y[,2]))))/2
+
+    time <- sort(unique(Y[,2])) # unique tstops
+
+    etime <- lapply(
+      X = tstart_str,
+      FUN = function(y) c(0, sort(unique(y)),  max(y) + delta)
+    )
+
+    indx <-
+      mapply(FUN = function(time, etime) findInterval(time, etime, left.open = TRUE),
+             time_str,
+             etime,
+             SIMPLIFY = FALSE
+      )
+
+    indx2 <-
+      mapply(FUN = function(y, time) findInterval(y, time),
+             tstart_str,
+             time_str,
+             SIMPLIFY = FALSE
+      )
+
+    time_to_stop <-
+      mapply(FUN = function(y, time) match(y, time),
+             tstop_str,
+             time_str,
+             SIMPLIFY = FALSE
+      )
+
+    positions_strata <- do.call(c,split(1:nrow(Y), strats))
+
+    atrisk <- list(death = death, nevent = nevent, nev_id = nev_id,
+                   order_id = order_id, time = time, indx = indx, indx2 = indx2,
+                   time_to_stop = time_to_stop,
+                   ord_tstart_str = ord_tstart_str,
+                   ord_tstop_str = ord_tstop_str,
+                   positions_strata = positions_strata,
+                   strats = strats)
+
+    nrisk <- mapply(FUN = function(nrisk, esum, indx)  nrisk - c(esum, 0,0)[indx],
+                    nrisk,
+                    esum,
+                    indx,
+                    SIMPLIFY = FALSE)
+
+    if(newrisk == 0) warning("Hazard ratio very extreme; please check (and/or rescale) your data")
+
+    haz <- mapply(FUN = function(nevent, nrisk) nevent/nrisk * newrisk,
+                  nevent,
+                  nrisk,
+                  SIMPLIFY = FALSE)
+
+    basehaz_line <- mapply(FUN = function(haz, time_to_stop) haz[time_to_stop],
+                           haz,
+                           time_to_stop,
+                           SIMPLIFY = FALSE)
+
+    cumhaz <- lapply(haz, cumsum)
+
+    cumhaz_0_line <- mapply(FUN = function(cumhaz, time_to_stop) cumhaz[time_to_stop],
+                            cumhaz,
+                            time_to_stop,
+                            SIMPLIFY = FALSE)
+
+    cumhaz_tstart <- mapply(FUN = function(cumhaz, indx2) c(0, cumhaz)[indx2 + 1],
+                            cumhaz,
+                            indx2,
+                            SIMPLIFY = FALSE)
+
+    cumhaz_line <- mapply(FUN = function(cumhaz_0_line, cumhaz_tstart, explp)
+      (cumhaz_0_line - cumhaz_tstart) * explp / newrisk,
+      cumhaz_0_line,
+      cumhaz_tstart,
+      split(explp, strats),
+      SIMPLIFY = FALSE)
+
+    cumhaz_line <- do.call(c, cumhaz_line)[order(positions_strata)]
+
+
+  } else {
+    ord_tstop <- match(Y[,2], sort(unique(Y[,2])))
+    ord_tstart <- match(Y[,1], sort(unique(Y[,1])))
+
+    nrisk <- rowsum_vec(explp, ord_tstop, max(ord_tstop))
+    # nrisk <- rev(cumsum(rev(rowsum(explp, Y[, ncol(Y) - 1]))))
+    esum <- rowsum_vec(explp, ord_tstart, max(ord_tstart))
+    # esum <- rev(cumsum(rev(rowsum(explp, Y[, 1]))))
+
+    death <- (Y[, 3] == 1)
+
+    nevent <- as.vector(rowsum(1 * death, Y[, ncol(Y) - 1])) # per time point
+
+    time <- sort(unique(Y[,2])) # unique tstops
+
+    etime <- c(0, sort(unique(Y[, 1])),  max(Y[, 1]) + min(diff(time))/2)
+    indx <- findInterval(time, etime, left.open = TRUE) # left.open  = TRUE is very important
+
+    # this gives for every tstart (line variable), after which event time did it come
+    indx2 <- findInterval(Y[,1], time)
+
+    time_to_stop <- match(Y[,2], time)
+
+    atrisk <- list(death = death, nevent = nevent, nev_id = nev_id,
+                   order_id = order_id,
+                   time = time, indx = indx, indx2 = indx2,
+                   time_to_stop = time_to_stop,
+                   ord_tstart = ord_tstart, ord_tstop = ord_tstop,
+                   strats = NULL)
+    nrisk <- nrisk - c(esum, 0,0)[indx]
+
+    if(newrisk == 0) warning("Hazard ratio very extreme; please check (and/or rescale) your data")
+
+    haz <- nevent/nrisk * newrisk
+    basehaz_line <- haz[atrisk$time_to_stop]
+    cumhaz <- cumsum(haz)
+
+    cumhaz_0_line <- cumhaz[atrisk$time_to_stop]
+    cumhaz_tstart <- c(0, cumhaz)[atrisk$indx2 + 1]
+    cumhaz_line <- (cumhaz[atrisk$time_to_stop] - c(0, cumhaz)[atrisk$indx2 + 1]) * explp / newrisk
+  }
+
+
+  Cvec <- rowsum(cumhaz_line, order_id, reorder = FALSE)
 
   ca_test <- NULL
 
-  if(isTRUE(control$ca_test)) ca_test <- ca_test_fit(mcox, X, atrisk, exp_g_x, cumhaz)
-  if(isTRUE(control$only_ca_test)) return(ca_test)
+  # ca_test_fit does not know strata ?!?
+  if(isTRUE(control$ca_test)) {
 
+    if(!is.null(strats)) ca_test <- NULL else
+      ca_test <- ca_test_fit(mcox, X, atrisk, exp_g_x, cumhaz)
+
+  }
 
   if(isTRUE(distribution$left_truncation)) {
-    #indx2 <- findInterval(Y[,1], time, left.open = TRUE)
-    cumhaz_tstop <- cumsum(haz)
-    cumhaz_tstart <- c(0, cumhaz_tstop)[indx2 + 1]
+
+    if(!is.null(strats))
+      cumhaz_tstart <- do.call(c, cumhaz_tstart)[order(atrisk$positions_strata)]
 
     Cvec_lt <- rowsum(cumhaz_tstart, atrisk$order_id, reorder = FALSE)
-    # Cvec_lt <- tapply(X = cumhaz_tstart,
-    #                   INDEX = id,
-    #                   FUN = sum)
+
   } else Cvec_lt <- 0 * Cvec
 
 
   # a fit just for the log-likelihood;
   if(!isTRUE(control$opt_fit)) {
-    return(em_fit(logfrailtypar = log(distribution$theta),
+    return(
+      em_fit(logfrailtypar = log(distribution$theta),
            dist = distribution$dist, pvfm = distribution$pvfm,
-           Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+           Y = Y, Xmat = X, atrisk = atrisk,
+           basehaz_line = basehaz_line,
            mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
            Cvec = Cvec, lt = distribution$left_truncation,
            Cvec_lt = Cvec_lt, se = FALSE,
-           inner_control = control$inner_control))
+           inner_control = control$inner_control)
+      )
   }
 
-
   outer_m <- do.call(nlm, args = c(list(f = em_fit,
-                      p = log(distribution$theta), hessian = TRUE,
-                      dist = distribution$dist, pvfm = distribution$pvfm,
-                      Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
+                      p = log(distribution$theta),
+                      hessian = TRUE,
+                      dist = distribution$dist,
+                      pvfm = distribution$pvfm,
+                      Y = Y, Xmat = X,
+                      atrisk = atrisk,
+                      basehaz_line = basehaz_line,
                       mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
-                      Cvec = Cvec, lt = distribution$left_truncation,
+                      Cvec = Cvec,
+                      lt = distribution$left_truncation,
                       Cvec_lt = Cvec_lt, se = FALSE,
                       inner_control = control$inner_control), control$nlm_control))
+
+
+  # the hessian can't be negative but this might happen in the case that the estimate is on the
+  # border
+
+  if(outer_m$hessian < 0) hessian <- NA else hessian <- outer_m$hessian
 
 
   # likelihood-based confidence intervals
@@ -495,33 +563,51 @@ emfrail <- function(formula,
     # With the stable distribution, a problem pops up for small values, i.e. very large association (tau large)
     # So there I use another interval for this
     if(distribution$dist == "stable") {
-      control$lik_ci_intervals$interval <- control$lik_ci_intervals$interval_stable
+      control$lik_interval <- control$lik_interval_stable
     }
 
-  lower_llik <- em_fit(control$lik_ci_intervals$interval[1],
+   skip_ci <- FALSE
+
+   lower_llik <- try(em_fit(log(control$lik_interval[1]),
                        dist = distribution$dist,
                        pvfm = distribution$pvfm,
                        Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
                        mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
                        Cvec = Cvec, lt = distribution$left_truncation,
                        Cvec_lt = Cvec_lt, se = FALSE,
-                       inner_control = control$inner_control)
+                       inner_control = control$inner_control), silent = TRUE)
+  if(class(lower_llik) == "try-error") {
+    warning("likelihood-based CI could not be calcuated; disable or change lik_interval[1] in emfrail_control")
+    lower_llik <- NA
+    log_theta_low <- log_theta_high <- NA
+    skip_ci <- TRUE
+  }
 
-  upper_llik <- em_fit(control$lik_ci_intervals$interval[2],
+  upper_llik <- try(em_fit(log(control$lik_interval[2]),
          dist = distribution$dist,
          pvfm = distribution$pvfm,
          Y = Y, Xmat = X, atrisk = atrisk, basehaz_line = basehaz_line,
          mcox = list(coefficients = g, loglik = mcox$loglik),  # a "fake" cox model
          Cvec = Cvec, lt = distribution$left_truncation,
          Cvec_lt = Cvec_lt, se = FALSE,
-         inner_control = control$inner_control)
+         inner_control = control$inner_control), silent = TRUE)
 
+  if(class(upper_llik) == "try-error") {
+    warning("likelihood-based CI could not be calcuated; disable or lik_interval[2] in emfrail_control")
+    upper_llik <- NA
+    log_theta_low <- log_theta_high <- NA
+    skip_ci <- TRUE
+  }
+
+
+  if(!isTRUE(skip_ci)) {
   if(lower_llik - outer_m$minimum < 1.92) {
-    theta_low <- control$lik_ci_intervals$interval[1]
-    warning("tolerance limit reached; should maybe take a lower value for control$lik_ci_intervals[1]")
+    log_theta_low <- log(control$lik_interval[1])
+    warning("Likelihood-based confidence interval lower limit reached, probably 0;
+You can try a lower value for control$lik_interval[1].")
   } else
-  theta_low <- uniroot(function(x, ...) outer_m$minimum - em_fit(x, ...) + 1.92,
-                       interval = c(control$lik_ci_intervals$interval[1], outer_m$estimate),
+  log_theta_low <- uniroot(function(x, ...) outer_m$minimum - em_fit(x, ...) + 1.92,
+                       interval = c(log(control$lik_interval[1]), outer_m$estimate),
                        f.lower = outer_m$minimum - lower_llik + 1.92, f.upper = 1.92,
                        tol = .Machine$double.eps^0.1,
                        dist = distribution$dist,
@@ -533,11 +619,10 @@ emfrail <- function(formula,
                        inner_control = control$inner_control,
                        maxiter = 100)$root
 
-
   # this says that if I can't get a significant difference on the right side, then it's infinity
-  if(upper_llik  - outer_m$minimum < 1.92) theta_high <- Inf else
-    theta_high <- uniroot(function(x, ...) outer_m$minimum - em_fit(x, ...) + 1.92,
-                          interval = c(outer_m$estimate, control$lik_ci_intervals$interval[2]),
+  if(upper_llik  - outer_m$minimum < 1.92) log_theta_high <- Inf else
+    log_theta_high <- uniroot(function(x, ...) outer_m$minimum - em_fit(x, ...) + 1.92,
+                          interval = c(outer_m$estimate, log(control$lik_interval[2])),
                           f.lower = 1.92, f.upper = outer_m$minimum - upper_llik + 1.92,
                           extendInt = c("downX"),
                           dist = distribution$dist,
@@ -548,7 +633,8 @@ emfrail <- function(formula,
                           Cvec_lt = Cvec_lt, se  = FALSE,
                           inner_control = control$inner_control)$root
   }
-
+  } else
+    log_theta_low <- log_theta_high <- NA
 
 
   if(isTRUE(control$se))  {
@@ -586,9 +672,9 @@ emfrail <- function(formula,
     # absolute value should be redundant. but sometimes the "hessian" might be 0.
     # in that case it might appear negative; this happened only on Linux...
     # h <- as.numeric(sqrt(abs(1/(attr(outer_m, "details")[[3]])))/2)
-    h<- as.numeric(sqrt(abs(1/outer_m$hessian))/2)
-    lfp_minus <- max(outer_m$estimate - h , outer_m$estimate - 5)
-    lfp_plus <- min(outer_m$estimate + h , outer_m$estimate + 5)
+    h<- as.numeric(sqrt(abs(1/hessian))/2)
+    lfp_minus <- max(outer_m$estimate - h , outer_m$estimate - 5, na.rm = TRUE)
+    lfp_plus <- min(outer_m$estimate + h , outer_m$estimate + 5, na.rm = TRUE)
 
 
     final_fit_minus <- em_fit(logfrailtypar = lfp_minus,
@@ -614,8 +700,13 @@ emfrail <- function(formula,
 
     # se_logtheta^2 / (2 * (final_fit$loglik -final_fit_plus$loglik ))
 
-    deta_dtheta <- (c(final_fit_plus$coef, final_fit_plus$haz) -
-                      c(final_fit_minus$coef, final_fit_minus$haz)) / (2*h)
+    if(!is.null(atrisk$strats))
+      deta_dtheta <- (c(final_fit_plus$coef, do.call(c, final_fit_plus$haz)) -
+                      c(final_fit_minus$coef, do.call(c, final_fit_minus$haz))) / (2*h) else
+                        deta_dtheta <- (c(final_fit_plus$coef, final_fit_plus$haz) -
+                                          c(final_fit_minus$coef, final_fit_minus$haz)) / (2*h)
+
+
 
     #adj_se <- sqrt(diag(deta_dtheta %*% (1/(attr(opt_object, "details")[[3]])) %*% t(deta_dtheta)))
 
@@ -631,7 +722,7 @@ emfrail <- function(formula,
   if(length(pos_terminal_X1) > 0 & distribution$dist == "gamma") {
     Y[,3] <- X1[,pos_terminal_X1]
 
-    Mres <- survival::agreg.fit(x = X, y = Y, strata = NULL, offset = NULL, init = NULL,
+    Mres <- survival::agreg.fit(x = X, y = Y, strata = atrisk$strats, offset = NULL, init = NULL,
                         control = survival::coxph.control(),
                         weights = NULL, method = "breslow", rownames = NULL)$residuals
     Mres_id <- rowsum(Mres, atrisk$order_id, reorder = FALSE)
@@ -658,31 +749,44 @@ emfrail <- function(formula,
     model_frame <- mf
   if(!isTRUE(model.matrix)) X <- NULL
 
+
   frail <- inner_m$frail
   names(frail) <- unique(id)
 
+  haz <- inner_m$haz
+  tev <- inner_m$tev
+
+  if(!is.null(atrisk$strats)) {
+
+    names(haz) <- label_strats
+    names(tev) <- label_strats
+
+  }
+
+
+
   res <- list(coefficients = inner_m$coef, #
-               hazard = inner_m$haz,
+               hazard = haz,
                var = inner_m$Vcov,
                var_adj = vcov_adj,
                logtheta = outer_m$estimate,
-               var_logtheta = 1/outer_m$hessian,
-               ci_logtheta = c(theta_low, theta_high),
+               var_logtheta = 1/hessian,
+               ci_logtheta = c(log_theta_low, log_theta_high),
                frail = frail,
                residuals = list(group = inner_m$Cvec,
                                 individual = inner_m$cumhaz_line * inner_m$fitted),
-               tev = inner_m$tev,
+               tev = tev,
                nevents_id = inner_m$nev_id,
                loglik = c(mcox$loglik[length(mcox$loglik)], -outer_m$minimum),
-               ca_test = ca_test, #
-               cens_test = cens_test, #
+               ca_test = ca_test,
+               cens_test = cens_test,
                formula = formula,
                distribution = distribution,
                control = control,
-               nobs = nrow(mf), #
-               fitted = as.numeric(inner_m$fitted), #
-               mf = model_frame, #
-               mm = X) #
+               nobs = nrow(mf),
+               fitted = as.numeric(inner_m$fitted),
+               mf = model_frame,
+               mm = X)
 
   # these are things that make the predict work and other methods
   terms_2 <- delete.response(attr(mf, "terms"))

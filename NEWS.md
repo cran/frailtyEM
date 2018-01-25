@@ -1,4 +1,22 @@
-# frailtyEM 0.7.9
+# frailtyEM 0.8.1
+Major update. Now stratified models are supported! 
+Several improvements in the documentation and in the performance section. 
+
+Smaller fixes, as compared to the previoius CRAN release:
+
+- removed `rev(cumsum(rev(rowsum)))` statement and replaced with an Rcpp function `rowsum_vec`
+- using the cholesky decomposition instead of `solve`, seems that this is way better for symmetric matrices (0.7.16)
+- simplified a bit the `emfrail_control()` function (0.7.15)
+- documented options in `summary()` that control what is printed (if you want the output of a package to fit on one slide, for example) (0.7.15)
+- fixed a bug in `ca_test` that was not reading correctly the input because of the partial matching of arguments in R (0.7.14)
+- fixed some inconsistencies in summary and predict methods, when certain options are passed (such as no standard errors, for example) (0.7.13)
+- improved print method for the summary object with some options to make things shorter (0.7.12)
+- improved behaviour when frailty variance is actually 0 (0.7.11)
+- fixed some warnings that were actually expected behaviour (0.7.10)
+- some improvements in the limiting case where there is no frailty (0.7.10)
+- more consistent notation and less vague passing of limits for the confidence intervals (now it's clear whether it's log scale or not) (0.7.10)
+
+# frailtyEM 0.7.9 (CRAN release)
 
 As compared to the previous CRAN release, 0.7.2:
 - fixed a bug where the estimation would go wrong when the data set was not ordered according to the cluster

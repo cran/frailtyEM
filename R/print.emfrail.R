@@ -1,4 +1,5 @@
 #' @export
+#' @method print emfrail
 #' @keywords internal
 print.emfrail <- function(x, ...) {
 
@@ -7,6 +8,13 @@ print.emfrail <- function(x, ...) {
   cat("\n")
 
   cat("log-likelihood:", x$loglik[2], "\n")
+
+  with(x$distribution,
+       if(dist == "gamma" | (dist == "pvf" & pvfm < 0))
+         cat("frailty variance:",
+             exp(-x$logtheta),
+             "\n"))
+
   cat("theta:", exp(x$logtheta), "\n")
   cat("\n")
   if(length(x$coef) > 0) {
