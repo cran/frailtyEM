@@ -120,7 +120,7 @@ summary.emfrail <- function(object,
     ci_theta_high <-  exp(object$logtheta + 1.96 * sqrt(object$var_logtheta))
 
     # if theta was at the edge, then CI should show this....
-    if(theta > object$control$inner_control$upper_tol - 0.1) {
+    if(theta > object$control$em_control$upper_tol - 0.1) {
       ci_theta_low <- theta
       ci_theta_high <- Inf
     }
@@ -388,12 +388,12 @@ summary.emfrail <- function(object,
       coef = object$coef,
       "exp(coef)" = exp(object$coef),
       "se(coef)" = sqrt(diag(object$var)[seq_along(object$coef)]),
-      "adjusted se" = sqrt(diag(object$var_adj)[seq_along(object$coef)] ))
+      "adj. se" = sqrt(diag(object$var_adj)[seq_along(object$coef)] ))
 
     if(all(is.na(object$var_adj))) {
-      coefmat$`adjusted se` <- NULL
+      coefmat$`adj. se` <- NULL
       coefmat$z <- coefmat$coef / coefmat$`se(coef)`} else
-        coefmat$z <- coefmat$coef / coefmat$`adjusted se`
+        coefmat$z <- coefmat$coef / coefmat$`adj. se`
 
 
 
