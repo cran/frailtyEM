@@ -1,7 +1,7 @@
 Package: frailtyEM
 Type: Package
 Title: Fitting Frailty Models with the EM Algorithm
-Version: 0.8.3
+Version: 0.8.7
 Author: Theodor Adrian Balan, Hein Putter
 Maintainer: Theodor Adrian Balan <t.a.balan@lumc.nl>
 URL: https://github.com/tbalan/frailtyEM
@@ -16,16 +16,16 @@ Encoding: UTF-8
 LazyData: true
 Depends: R (>= 3.3.0), survival
 Imports: Rcpp (>= 0.12.8), magrittr, msm, ggplot2, expint, tibble,
-        Matrix
+        Matrix, numDeriv
 LinkingTo: Rcpp
 RoxygenNote: 6.0.1
-Suggests: dplyr, statmod, plotly, gridExtra
+Suggests: dplyr, statmod, plotly, gridExtra, egg
 Collate: 'RcppExports.R' 'autoplot.emfrail.R' 'ca_test_cph.R'
         'ca_test_fit.R' 'em_fit.R' 'emfrail_aux.R' 'emfrail.R'
         'emfrail_arguments.R' 'emfrail_methods.R' 'fast_Estep.R'
         'plot.emfrail.R' 'predict.emfrail.R' 'print.emfrail.R'
         'print.emfrail_summary.R' 'summary.emfrail.R'
 NeedsCompilation: yes
-Packaged: 2018-02-05 19:54:39 UTC; theodor
+Packaged: 2018-04-23 11:16:01 UTC; tabalan
 Repository: CRAN
-Date/Publication: 2018-02-05 20:02:19 UTC
+Date/Publication: 2018-04-23 12:35:35 UTC

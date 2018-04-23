@@ -1,5 +1,5 @@
 ### R code from vignette source 'frailtyEM_manual.Rnw'
-### Encoding: UTF-8
+### Encoding: ISO8859-1
 
 ###################################################
 ### code chunk number 1: roptions
@@ -17,19 +17,22 @@ library("frailtyEM")
 ###################################################
 ### code chunk number 3: emfrail1 (eval = FALSE)
 ###################################################
+## 
 ## emfrail(formula, data, distribution, control, ...)
 
 
 ###################################################
 ### code chunk number 4: emfrail2
 ###################################################
-str(emfrail_dist())
+str(emfrail_dist(dist = "gamma", theta = 2))
 
 
 ###################################################
-### code chunk number 5: cgd1
+### code chunk number 5: chd_head
 ###################################################
 data("cgd")
+cgd <- cgd[c("tstart", "tstop", "status", "id", "sex", "treat")]
+head(cgd)
 
 
 ###################################################
@@ -37,28 +40,31 @@ data("cgd")
 ###################################################
 gam <- emfrail(Surv(tstart, tstop, status) ~ sex + treat + cluster(id),
   data = cgd)
-summary(gam, lik_ci = TRUE)
+summary(gam)
 
 
 ###################################################
 ### code chunk number 7: bladder2_cumhaz
 ###################################################
 library("ggplot2")
+library("egg")
 p1 <- autoplot(gam, type = "pred",
-  newdata = data.frame(sex = "male", treat = "rIFN-g")) +
-  ggtitle("rIFN-g") + ylim(c(0, 2)) + theme_minimal()
+               newdata = data.frame(sex = "male", treat = "rIFN-g")) +
+  ggtitle("rIFN-g") +
+  ylim(c(0, 2)) +
+  guides(colour = FALSE)
 
 p2 <- autoplot(gam, type = "pred",
-  newdata = data.frame(sex = "male", treat = "placebo")) +
-  ggtitle("placebo") + ylim(c(0, 2)) + theme_minimal()
+               newdata = data.frame(sex = "male", treat = "placebo")) +
+  ggtitle("placebo") + ylim(c(0, 2))
+
 
 
 ###################################################
 ### code chunk number 8: cgd_pred_plots
 ###################################################
-pdf("cgd_pred.pdf", width = 9, height = 3)
-gridExtra::grid.arrange(p1, p2, nrow = 1)
-dev.off()
+pp <- ggarrange(p1,p2, nrow = 1)
+ggsave(filename = "cgd_pred.pdf", plot = pp, width = 8, height = 3)
 
 
 ###################################################
@@ -77,7 +83,8 @@ dat_pred_b <- data.frame(sex = c("male", "male"),
   tstart = c(0, 200), tstop = c(200, Inf))
 
 p <- autoplot(gam, type = "pred", newdata = dat_pred_b, individual = TRUE) +
-  ggtitle("change placebo to rIFN-g at time 200") + theme_minimal()
+  ggtitle("change placebo to rIFN-g at time 200")
+
 
 
 ###################################################
@@ -108,66 +115,113 @@ newdata <- data.frame(treat = c("placebo", "rIFN-g"),
   sex = c("male", "male"))
 
 pl1 <- autoplot(gam, type = "hr", newdata = newdata) +
-  ggtitle("gamma") + theme_minimal()
+  ggtitle("gamma") +
+  guides(colour = FALSE)
+
 
 pl2 <- autoplot(stab, type = "hr", newdata = newdata) +
-  ggtitle("PS") + theme_minimal()
+  ggtitle("PS") +
+  guides(colour = FALSE)
+
 
 pl3 <- autoplot(ig, type = "hr", newdata = newdata) +
-  ggtitle("IG") + theme_minimal()
+  ggtitle("IG")
+
+pp <- ggarrange(pl1, pl2, pl3, nrow = 1)
 
 
 ###################################################
 ### code chunk number 14: cgd_hr_plots
 ###################################################
-pdf("cgd_hr.pdf", width = 9, height = 3)
-gridExtra::grid.arrange(pl1, pl2, pl3, nrow = 1)
-dev.off()
+ggsave(filename = "cgd_hr.pdf", width = 8, height = 3, plot = pp)
 
 
 ###################################################
 ### code chunk number 15: kidney1
 ###################################################
 data("kidney")
+kidney <- kidney[c("time", "status", "id", "age", "sex" )]
 kidney$sex <- ifelse(kidney$sex == 1, "male", "female")
+head(kidney)
+
+
+###################################################
+### code chunk number 16: kidneyb
+###################################################
+zph_t = emfrail_control(zph = TRUE)
 
 m_gam <- emfrail(Surv(time, status) ~ age + sex + cluster(id),
-  data = kidney)
-s_gam <- summary(m_gam)
-s_gam
+  data = kidney, control = zph_t)
 
-
-###################################################
-### code chunk number 16: kidney1
-###################################################
-m_stab <- emfrail(Surv(time, status) ~ age + sex + cluster(id),
+m_ps <- emfrail(Surv(time, status) ~ age + sex + cluster(id),
   data = kidney,
-  distribution = emfrail_dist(dist = "stable"))
-s_stab <- summary(m_stab)
-s_stab
+  distribution = emfrail_dist("stable"),
+  control = zph_t)
 
 
 ###################################################
-### code chunk number 17: kidney3
+### code chunk number 17: kidneygam
 ###################################################
-zph1 <- cox.zph(coxph(Surv(time, status) ~ age + sex + cluster(id),
-  data = kidney))
-zph1
+summary(m_gam, print_opts = list(frailty = FALSE))
 
 
 ###################################################
-### code chunk number 18: kidney4
+### code chunk number 18: kidneygstab
 ###################################################
-off_z_gam <- log(s_gam$frail$z)[match(kidney$id, s_gam$frail$id)]
-off_z_stab <- log(s_stab$frail$z)[match(kidney$id, s_stab$frail$id)]
+summary(m_ps, print_opts = list(frailty = FALSE))
 
-zph_gam <- cox.zph(coxph(Surv(time, status) ~
-  age + sex + offset(off_z_gam) + cluster(id),
-  data = kidney))
-zph_stab <- cox.zph(coxph(Surv(time, status) ~
-  age + sex + offset(off_z_stab) + cluster(id),
-  data = kidney))
-zph_gam
-zph_stab
+
+###################################################
+### code chunk number 19: test_prop
+###################################################
+m_gam$zph
+m_ps$zph
+
+
+###################################################
+### code chunk number 20: rats1
+###################################################
+data("rats")
+head(rats)
+
+
+###################################################
+### code chunk number 21: rats_gamma
+###################################################
+summary(emfrail(Surv(time, status) ~ rx + sex + cluster(litter),
+                data = rats))
+
+
+###################################################
+### code chunk number 22: rats2
+###################################################
+set.seed(1)
+rats$tstart <- rexp(nrow(rats), rate = 1/50)
+rats_lt <- rats[rats$tstart < rats$time, ]
+
+
+###################################################
+### code chunk number 23: rats3
+###################################################
+m1 <-
+  emfrail(Surv(time, status) ~ rx  + cluster(litter),
+          data = rats_lt)
+
+
+###################################################
+### code chunk number 24: rats3b
+###################################################
+m2 <-
+  emfrail(Surv(tstart, time, status) ~ rx + sex + cluster(litter),
+          data = rats_lt)
+
+
+###################################################
+### code chunk number 25: rats3c
+###################################################
+m3 <-
+  emfrail(Surv(tstart, time, status) ~ rx + sex + cluster(litter),
+          data = rats_lt,
+          distribution = emfrail_dist(left_truncation = TRUE))
 
 

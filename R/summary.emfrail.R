@@ -11,8 +11,7 @@
 #'
 #' @details
 #' Regardless of
-#' the fitted model, one can expect the following
-#' fields in this object: \code{est_dist} (an object of class \code{emfrail_distribution}) with the estimated
+#' the fitted model, the following fields will be present in this object: \code{est_dist} (an object of class \code{emfrail_distribution}) with the estimated
 #' distribution, \code{loglik} (a named vector with the log-likelihoods of the no-frailty model, the frailty model,
 #' the likelihood ratio test statistic and the p-value of the one-sided likelihood ratio test), \code{theta} (a named vector with
 #' the estimated value of the parameter \eqn{\theta}, the standard error, and the limits of a 95% cofindence interval) and \code{frail}, which
@@ -22,7 +21,9 @@
 #' For the the PVF or gamma distributions, the field \code{fr_var} contains a transformation of \code{theta} to correspond to the
 #' frailty variance.
 #' The fields \code{pvf_pars} and \code{stable_pars} are for quantities that are calculated only when the distribution is PVF or stable.
-#' If the model contains covariates, the field \code{coefmat} contains the corresponding details.
+#' If the model contains covariates, the field \code{coefmat} contains the corresponding estimates. The p-values are based on
+#' the adjusted standard errors, if they have been calculated successfully (i.e. if they appear when prining the summary object).
+#' Otherwise, they are based on the regular standard errors.
 #'
 #' @export
 #' @method summary emfrail
@@ -390,13 +391,12 @@ summary.emfrail <- function(object,
       "se(coef)" = sqrt(diag(object$var)[seq_along(object$coef)]),
       "adj. se" = sqrt(diag(object$var_adj)[seq_along(object$coef)] ))
 
-    if(all(is.na(object$var_adj))) {
-      coefmat$`adj. se` <- NULL
-      coefmat$z <- coefmat$coef / coefmat$`se(coef)`} else
+      if(all(is.na(coefmat$`adj. se`))) {
+        coefmat$`adj. se` <- NULL
+        coefmat$z <- coefmat$coef / coefmat$`se(coef)`
+      } else {
         coefmat$z <- coefmat$coef / coefmat$`adj. se`
-
-
-
+      }
 
     coefmat$p <-  1 - pchisq(coefmat$z^2, df = 1)
 
