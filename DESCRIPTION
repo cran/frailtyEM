@@ -1,7 +1,7 @@
 Package: frailtyEM
 Type: Package
 Title: Fitting Frailty Models with the EM Algorithm
-Version: 0.8.7
+Version: 0.8.8
 Author: Theodor Adrian Balan, Hein Putter
 Maintainer: Theodor Adrian Balan <t.a.balan@lumc.nl>
 URL: https://github.com/tbalan/frailtyEM
@@ -26,6 +26,6 @@ Collate: 'RcppExports.R' 'autoplot.emfrail.R' 'ca_test_cph.R'
         'plot.emfrail.R' 'predict.emfrail.R' 'print.emfrail.R'
         'print.emfrail_summary.R' 'summary.emfrail.R'
 NeedsCompilation: yes
-Packaged: 2018-04-23 11:16:01 UTC; tabalan
+Packaged: 2018-05-23 18:17:51 UTC; theodor
 Repository: CRAN
-Date/Publication: 2018-04-23 12:35:35 UTC
+Date/Publication: 2018-05-23 18:33:26 UTC

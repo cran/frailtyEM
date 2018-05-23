@@ -1,6 +1,8 @@
-# frailtyEM 0.8.7 (CRAN release)
-- major update to the vignette
-- nice theme for the plots
+## frailtyEM 0.8.8
+- fixed an error that would happen in recognizing the `autoplot()` method on Linux systems
+
+## frailtyEM 0.8.7
+- fixed the vignette and made the plots nicer
 
 ## frailtyEM 0.8.6
 - Nicer print in summary() and print()

@@ -1,7 +1,10 @@
+#' Generic autoplot function
+#'
+#' The following is imported and then re-exported to avoid conflicts with \code{ggplot2}
 #' @importFrom ggplot2 autoplot
+#' @name autoplot
 #' @export
-#' @rdname autoplot.emfrail
-autoplot <- autoplot
+NULL
 
 #' Plots for emfrail objects using \code{ggplot2}
 #' @importFrom ggplot2 autoplot theme_minimal ggplot geom_step geom_path geom_point geom_histogram geom_abline geom_errorbar aes_string ylim xlab ylab scale_colour_manual aes_string geom_hline scale_x_continuous
@@ -32,7 +35,6 @@ autoplot <- autoplot
 #' easier to create an interactive plot out of the resulting object.
 #'
 #'
-#' @export autoplot.emfrail
 #' @export
 #' @seealso \code{\link{predict.emfrail}}, \code{\link{summary.emfrail}}, \code{\link{plot.emfrail}}.
 #'
@@ -141,7 +143,7 @@ autoplot.emfrail <- function(object,
       geom_step(aes_string(y = "hr_cond", col = shQuote("1"))) +
       geom_step(aes_string(y = "hr_mar", col = shQuote("2"))) +
       theme_minimal() +
-      scale_colour_manual(name = "type", values = c("#fc8d59", "#000000" ), labels = c("conditional", "marginal") )
+      scale_colour_manual(name = "type", values = c("#fc8d59", "#000000" ), labels = c("conditional", "marginal") ) +
       ylab("hazard ratio")
 
     res[[i]] <- plot2
@@ -277,6 +279,7 @@ autoplot.emfrail <- function(object,
           geom_step(aes_string(y = "cumhaz", col = shQuote("1"))) +
           geom_step(aes_string(y = "cumhaz_m", col = shQuote("2"))) +
           theme_minimal() +
+          ylab("cumulative hazard") +
           scale_colour_manual(name = "type", values = c("#fc8d59", "#000000" ), labels = c("conditional", "marginal") )
 
         if(conf_int == "adjusted") {

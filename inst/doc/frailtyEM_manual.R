@@ -1,5 +1,5 @@
 ### R code from vignette source 'frailtyEM_manual.Rnw'
-### Encoding: ISO8859-1
+### Encoding: UTF-8
 
 ###################################################
 ### code chunk number 1: roptions
